@@ -208,6 +208,9 @@ ATAs must be for the configured mint (6 decimals); the UI generates `purchase_id
 
 ## 6. API (apps/api, Dev 4 → Dev 1)
 
+**Chain ids:** the API accepts Solana (base58 public keys / PDAs) or Arc (`0x` 20-byte addresses for
+wallets, `0x` bytes32 for promo/purchase ids). `0x` values are stored and compared in lowercase.
+
 Live (read-only Gemini, no credentials needed). `:id` is a Gemini contract `instrumentSymbol`,
 e.g. `GEMI-NCAAF-2611212030-ARK-TEX-M-TEX` (= "Texas" contract of Arkansas vs Texas).
 

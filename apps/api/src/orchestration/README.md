@@ -17,6 +17,9 @@ resolution poll every `RESOLVE_POLL_MS` (default 5 s), and a reconciliation swee
 
 - `none` (default): API only, no workers.
 - `fake`: workers on `fake-gateway.ts`, an **in-memory fake** chain. Not Solana; local testing only.
+- `arc`: workers on `ArcGateway` (Arc testnet, `packages/arc`), from `ARC_*` (escrow address, relayer
+  key path). Same orchestrator; with `QUICKNODE_STREAMS_SECURITY_TOKEN`, the same
+  `/webhooks/quicknode` route accepts the Arc Stream (logs filtered to our escrow).
 - `real`: workers on Dev 3's `RealSolanaGateway` (Solana Devnet), created by
   `createSolanaGatewayFromEnv` from `SOLANA_*` / `QUICKNODE_*` / `RELAYER_*`. The relayer keypair
   must be `Config.relayer` on-chain. With `QUICKNODE_STREAMS_SECURITY_TOKEN` set, QuickNode Streams

@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { gzipSync } from "node:zlib";
 import { test } from "node:test";
+import {
+  computeStreamsSignature as computeArcSignature,
+  type ArcStreamsSignal,
+} from "@hedged/arc/server";
 import { computeStreamsSignature, type StreamsSignal } from "@hedged/solana/server";
 import { loadConfig } from "../config";
 import { buildServer } from "../server";
 import { MemoryStore } from "../store/memory-store";
+import { arcStreamsHandler, solanaStreamsHandler } from "./webhooks";
 
 const TOKEN = "test-streams-token";
 const SIG = "5".repeat(87);
@@ -14,7 +19,7 @@ async function server(streams: boolean) {
   const app = await buildServer(loadConfig({}), {
     store: new MemoryStore(),
     gateway: null,
-    streams: streams ? { securityToken: TOKEN, ingest: (s) => received.push(s) } : null,
+    streams: streams ? solanaStreamsHandler(TOKEN, (s) => received.push(s)) : null,
   });
   app.log.level = "silent";
   return { app, received };
@@ -108,4 +113,44 @@ test("config accepts SOLANA_GATEWAY=real and reads the Streams token", () => {
   assert.equal(c.workers.gateway, "real");
   assert.equal(c.workers.streamsSecurityToken, "t");
   assert.throws(() => loadConfig({ SOLANA_GATEWAY: "mainnet" }));
+});
+
+test("arc streams: signed delivery for our escrow reaches the Arc gateway; other contracts ignored", async () => {
+  const ESCROW = "0x" + "ab".repeat(20);
+  const TX = "0x" + "cd".repeat(32);
+  const received: ArcStreamsSignal[][] = [];
+  const app = await buildServer(loadConfig({}), {
+    store: new MemoryStore(),
+    gateway: null,
+    streams: arcStreamsHandler(TOKEN, ESCROW, (s) => received.push(s)),
+  });
+  app.log.level = "silent";
+  const send = (body: string, token = TOKEN) => {
+    const nonce = "n";
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    return app.inject({
+      method: "POST",
+      url: "/webhooks/quicknode",
+      headers: {
+        "content-type": "application/json",
+        "x-qn-nonce": nonce,
+        "x-qn-timestamp": timestamp,
+        "x-qn-signature": computeArcSignature(token, nonce, timestamp, body),
+      },
+      payload: body,
+    });
+  };
+  const filtered = JSON.stringify({
+    matchedTransactions: [{ txHash: TX, blockNumber: 7, events: ["DepositEvent"] }],
+  });
+  const ok = await send(filtered);
+  assert.equal(ok.statusCode, 200);
+  assert.deepEqual(received, [[{ txHash: TX, blockNumber: 7, events: ["DepositEvent"] }]]);
+  // Raw logs from another contract are not ours.
+  const other = JSON.stringify([
+    { transactionHash: TX, address: "0x" + "ee".repeat(20), blockNumber: "0x7" },
+  ]);
+  assert.equal((await send(other)).json().transactions, 0);
+  assert.equal((await send(filtered, "wrong")).statusCode, 401);
+  await app.close();
 });
