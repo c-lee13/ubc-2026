@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { api } from "@/lib/client";
 import { describe, type Problem } from "@/lib/errors";
-import { shortAddr, usd } from "@/lib/format";
+import { usd } from "@/lib/format";
 import { useWallet } from "@/lib/wallet/session";
 import { LoginCard } from "./login-card";
 import { Button, Notice } from "./ui";
@@ -39,9 +39,7 @@ export function AccountButton() {
           aria-expanded={open}
         >
           <span className="max-w-[9rem] truncate">{w.email}</span>
-          <span className="rounded bg-note-soft px-1.5 py-px text-[13px] font-bold text-note">
-            {usd(w.wallet!.usdcBalance)}
-          </span>
+          <strong className="text-note">{usd(w.wallet!.usdcBalance)}</strong>
         </Button>
       ) : (
         <Button size="sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
@@ -49,7 +47,7 @@ export function AccountButton() {
         </Button>
       )}
       {open ? (
-        <div className="absolute right-0 z-30 mt-2 w-[min(92vw,380px)] rounded-xl bg-paper-raised p-4 shadow-[0_18px_40px_-12px_rgb(19_35_63/0.45)] ring-1 ring-ink/15">
+        <div className="absolute right-0 z-30 mt-2 w-[min(92vw,380px)] rounded-xl bg-paper-raised p-4 shadow-[0_18px_40px_-12px_rgb(20_38_29/0.45)] ring-1 ring-ink/15">
           {ready ? <AccountMenu onDone={() => setOpen(false)} /> : <LoginCard />}
         </div>
       ) : null}
@@ -63,21 +61,15 @@ function AccountMenu({ onDone }: { onDone: () => void }) {
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-[13px] text-ink-soft">Signed in as</p>
-        <p className="truncate font-semibold">{w.email}</p>
+        <p className="truncate text-[14px] font-semibold text-ink-soft">{w.email}</p>
       </div>
-      <div className="rounded-lg bg-paper px-3 py-2.5">
-        <p className="text-[13px] text-ink-soft">Your dollars</p>
-        <p className="font-wide text-[24px] font-bold">{usd(wallet.usdcBalance)}</p>
-        <p className="text-[12px] text-ink-faint">
-          Test dollars, wallet {shortAddr(wallet.address, 5)}
-        </p>
-      </div>
+      <p className="font-display text-[34px] leading-none">{usd(wallet.usdcBalance)}</p>
       <AddUsdc compact />
       <div className="flex gap-2">
         <Button
           size="sm"
           variant="ghost"
+          title={wallet.address}
           onClick={() => void navigator.clipboard?.writeText(wallet.address)}
         >
           Copy wallet address
@@ -134,25 +126,20 @@ export function AddUsdc({ compact, onAdded }: { compact?: boolean; onAdded?: () 
       <Button size={compact ? "sm" : "md"} variant="secondary" busy={busy} onClick={drip}>
         Add free test dollars
       </Button>
-      {ok ? (
-        <p className="text-[13px] text-note">
-          Requested. Test dollars usually land in a few seconds.
-        </p>
-      ) : null}
+      {ok ? <p className="text-[13px] text-note">On its way.</p> : null}
       {problem ? (
         <Notice tone={fallback ? "warn" : "error"} title={problem.title}>
           {fallback ? (
             <>
-              Open{" "}
               <a
                 className="font-semibold text-ink underline"
                 href="https://faucet.circle.com"
                 target="_blank"
                 rel="noreferrer"
+                title="Pick Arc Testnet and paste your wallet address"
               >
-                faucet.circle.com
+                Use faucet.circle.com
               </a>
-              , pick Arc Testnet, and paste your wallet address:
               <span className="mt-1.5 flex flex-wrap items-center gap-2">
                 <code className="rounded bg-paper px-1.5 py-0.5 font-mono text-[12px] break-all text-ink">
                   {address}

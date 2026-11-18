@@ -533,8 +533,7 @@ export function describeApiError(err: unknown): { title: string; detail: string 
       case "wallets_disabled":
         return {
           title: "Email login is off on this server",
-          detail:
-            "The promo server isn't connected to Circle yet (CIRCLE_API_KEY, CIRCLE_APP_ID and the Arc escrow must be set).",
+          detail: "The promo server isn't connected to Circle and Arc yet.",
         };
       case "faucet_unavailable":
         return {

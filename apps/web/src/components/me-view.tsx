@@ -31,10 +31,7 @@ export function MeView() {
   if (!ready) {
     return (
       <div className="max-w-xl rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10">
-        <LoginCard
-          title="See your balance and promos"
-          lead="Log in with the email you paid with."
-        />
+        <LoginCard title="Log in with the email you paid with" />
       </div>
     );
   }
@@ -44,7 +41,6 @@ export function MeView() {
       <section className="space-y-3 self-start rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10">
         <p className="text-[14px] text-ink-soft">Your balance</p>
         <p className="font-display text-[52px] leading-none">{usd(w.wallet!.usdcBalance)}</p>
-        <p className="text-[13px] text-ink-soft">Money back from promos lands here. {w.email}</p>
         <AddUsdc onAdded={() => void w.refreshWallet()} />
       </section>
 
@@ -54,7 +50,7 @@ export function MeView() {
         </h2>
         {mine.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-ink/25 px-5 py-8 text-center text-ink-soft">
-            Nothing yet.{" "}
+            No orders yet.{" "}
             <Link href="/discover" className="font-semibold text-ink underline">
               Find a promo
             </Link>

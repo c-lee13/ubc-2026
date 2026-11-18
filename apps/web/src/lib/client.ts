@@ -11,10 +11,12 @@ export function setUserToken(t: string | null): void {
 
 const realTransport: Transport = (u, i) => fetch(u, i);
 
-// The dev-only fixture swaps the transport; in production builds this is constant-false and the
-// fixture module is never loaded.
+// The dev-only fixture swaps the transport. The flag is spelled out inline (not read from
+// publicConfig) so production builds see a literal `false` and drop the fixture code entirely.
 const transportReady: Promise<Transport> =
-  publicConfig.walletFixture && typeof window !== "undefined"
+  process.env.NODE_ENV !== "production" &&
+  process.env.NEXT_PUBLIC_WALLET_FIXTURE === "1" &&
+  typeof window !== "undefined"
     ? import("./wallet/fixture").then((m) => m.createFixtureTransport(realTransport))
     : Promise.resolve(realTransport);
 

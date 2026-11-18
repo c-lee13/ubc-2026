@@ -428,32 +428,28 @@ export function Composer({ onPublished }: { onPublished: () => void }) {
               {est ? (
                 est.status === "SIMULATED_FILLED" ? (
                   <div>
-                    <p className="font-wide text-[24px] font-bold">{usd(est.premium)}</p>
-                    <p className="text-[13.5px] text-ink-soft">
-                      {est.filledContracts} contracts at {cents(est.avgFillPriceMicroUsd)}. You keep{" "}
-                      {usd(BigInt(offerBase ?? "0") - BigInt(est.premium ?? "0"))} of each sale
-                      either way, before the cost of the item.
+                    <p className="font-display text-[44px] leading-none">{usd(est.premium)}</p>
+                    <p
+                      className="mt-1.5 text-[14px] text-ink-soft"
+                      title={`${est.filledContracts} contracts at ${cents(est.avgFillPriceMicroUsd)}, before the cost of the item`}
+                    >
+                      You keep {usd(BigInt(offerBase ?? "0") - BigInt(est.premium ?? "0"))} a sale
+                      either way.
                     </p>
-                    {budgetBase && est.premium && BigInt(est.premium) > 0n ? (
-                      <p className="mt-1 text-[13.5px] text-ink-soft">
-                        Budget covers about {String(BigInt(budgetBase) / BigInt(est.premium))}{" "}
-                        sales.
-                      </p>
-                    ) : null}
                   </div>
                 ) : (
                   <p className="text-[14px] text-ink">
                     {est.failureReason === "QUOTE_OVER_CAP"
-                      ? `Covering a sale costs ${usd((BigInt(offerBase ?? "0") * BigInt(ask ?? "0") + 999_999n) / 1_000_000n)} at the market's ${cents(ask)}, over your ${usd(maxCostBase)} max. The promo would sit paused and take no money.`
+                      ? `${usd((BigInt(offerBase ?? "0") * BigInt(ask ?? "0") + 999_999n) / 1_000_000n)} a sale at ${cents(ask)}: over your ${usd(maxCostBase)} max. It would stay paused.`
                       : est.failureReason === "INSUFFICIENT_LIQUIDITY" ||
                           est.status === "SIMULATED_PARTIAL"
-                        ? "Not enough contracts on sale to cover a whole refund at your limit."
+                        ? "Not enough on sale at your max."
                         : `Can't be covered right now (${est.failureReason ?? "no fill"}).`}
                   </p>
                 )
               ) : (
                 <p className="text-[14px] text-ink-soft">
-                  {marketId ? "Pricing…" : "Pick a market to see the cost."}
+                  {marketId ? "Pricing…" : "Pick a market."}
                 </p>
               )}
             </SimPanel>
@@ -474,15 +470,11 @@ export function Composer({ onPublished }: { onPublished: () => void }) {
             />
             {signedIn ? (
               <p className="text-[14px] text-ink-soft">
-                Publishing as <strong className="text-ink">{wallet.email}</strong>. This wallet owns
-                the promo and collects the sales when the answer is no.
+                Publishing as <strong className="text-ink">{wallet.email}</strong>
               </p>
             ) : (
               <div className="rounded-xl bg-paper-raised p-4 ring-1 ring-ink/15">
-                <LoginCard
-                  title="Log in as the shop"
-                  lead="The shop's email gets a wallet that owns the promo and collects the sales when the answer is no."
-                />
+                <LoginCard title="Log in as the shop" />
               </div>
             )}
             <div className="flex flex-wrap items-center gap-3">
@@ -510,13 +502,7 @@ export function Composer({ onPublished }: { onPublished: () => void }) {
                   <QrCode value={shareUrl} label={`QR code for ${shareUrl}`} className="w-full" />
                 </div>
                 <div className="min-w-0 flex-1 space-y-2">
-                  <p className="font-semibold">Live and confirmed on Arc. Customers scan this.</p>
-                  <a
-                    className="block font-mono text-[13px] break-all text-ink underline"
-                    href={shareUrl}
-                  >
-                    {shareUrl}
-                  </a>
+                  <p className="font-semibold">Live. Customers scan this.</p>
                   <div className="flex flex-wrap gap-2">
                     <ButtonLink size="sm" href={`/counter/${published!.promotionId}`}>
                       Open counter screen
@@ -558,9 +544,6 @@ export function Composer({ onPublished }: { onPublished: () => void }) {
           marketId={marketId ?? "GEMI-…"}
           stamp={publishedLive ? { text: "LIVE", tone: "note" } : null}
         />
-        <p className="mt-3 text-[13px] text-ink-soft">
-          The pattern is drawn from the promo&apos;s on-chain address once it&apos;s signed.
-        </p>
       </aside>
     </section>
   );
@@ -711,7 +694,9 @@ function WindowList({
     <div className="overflow-hidden rounded-xl bg-paper-raised ring-1 ring-ink/15">
       <div className="grid grid-cols-[1.3fr_1.3fr_0.7fr_0.8fr] gap-3 border-b border-ink/10 px-4 py-2 text-[12.5px] text-ink-soft max-sm:hidden">
         <span>SOL window</span>
-        <span>Sales close</span>
+        <span title="5 minutes before the window opens, so nobody buys once the starting price is known">
+          Sales close
+        </span>
         <span className="text-right">Price</span>
         <span className="text-right">On sale</span>
       </div>
@@ -752,10 +737,6 @@ function WindowList({
           );
         })}
       </ul>
-      <p className="border-t border-ink/10 px-4 py-2 text-[12.5px] text-ink-soft">
-        Live Gemini Predictions data. Sales close 5 minutes before a window opens, so nobody buys
-        once the starting price is known.
-      </p>
     </div>
   );
 }
@@ -834,7 +815,7 @@ function LiveQuote({
   error,
   ask,
   depth,
-  fetchedAt,
+  fetchedAt: _fetchedAt,
   marketReady,
 }: {
   loading: boolean;
@@ -860,14 +841,10 @@ function LiveQuote({
           <p className="text-[14px] text-ink">{describe(error).detail}</p>
         ) : ask ? (
           <>
-            <p className="font-wide text-[24px] font-bold">
-              {cents(ask)}{" "}
-              <span className="text-[15px] font-semibold text-ink-soft">per $1 contract</span>
-            </p>
-            <p className="text-[13.5px] text-ink-soft">
-              The market gives it a {Number(ask) / 10_000}% chance.{" "}
-              {depth !== null ? `${depth.toLocaleString()} contracts on sale.` : ""}
-              {fetchedAt ? ` Read at ${new Date(fetchedAt).toLocaleTimeString()}.` : ""}
+            <p className="font-display text-[44px] leading-none">{cents(ask)}</p>
+            <p className="mt-1.5 text-[14px] text-ink-soft">
+              {Number(ask) / 10_000}% chance
+              {depth !== null ? `, ${depth.toLocaleString()} on sale` : ""}
             </p>
           </>
         ) : (
@@ -900,32 +877,31 @@ function DeadlineLine({
   if (!source || !deadline) return null;
   const left = now === null ? null : deadline - now;
   return (
-    <div className="rounded-xl bg-paper-raised px-4 py-3 ring-1 ring-ink/15">
-      <p className="text-[15px]">
+    <div
+      className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-xl bg-paper-raised px-4 py-3 ring-1 ring-ink/15"
+      title={
+        meaningClose
+          ? `The answer comes when the window ends at ${clock(meaningClose)}.`
+          : undefined
+      }
+    >
+      <p className="text-[16px]">
         Sales close{" "}
         <strong>{left !== null && left > 86_400 ? dateTime(deadline) : clock(deadline)}</strong>
         {left !== null && left > 0 ? (
-          <span className="text-ink-soft"> (in {countdown(left)})</span>
+          <span className="text-ink-soft"> ({countdown(left)})</span>
         ) : null}
-        {meaningClose ? (
-          <span className="text-ink-soft">
-            . The answer comes when the window ends at {clock(meaningClose)}.
-          </span>
-        ) : (
-          "."
-        )}
       </p>
       <p
-        className={`mt-1 flex items-center gap-1.5 text-[13.5px] ${ok === false ? "text-stamp" : "text-ink-soft"}`}
+        className={`flex items-center gap-1.5 text-[14px] font-semibold ${ok === false ? "text-stamp" : "text-note"}`}
+        title={ok === false ? describeDeadlineReason(reason) : undefined}
       >
         {checking && ok === null ? (
-          <>
-            <Spinner /> Checking the deadline with the promo server…
-          </>
+          <Spinner />
         ) : ok ? (
-          <>Deadline check passed: buyers can still be covered until sales close.</>
+          "Deadline OK"
         ) : ok === false ? (
-          <>Deadline check failed: {describeDeadlineReason(reason)}</>
+          "Deadline not allowed"
         ) : null}
       </p>
     </div>

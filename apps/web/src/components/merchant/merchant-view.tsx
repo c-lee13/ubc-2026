@@ -36,19 +36,13 @@ export function MerchantView({ viewAs }: { viewAs: string | null }) {
         ) : null}
       </div>
       {readOnly ? (
-        <Notice title="Read-only view">
-          You are looking at this shop&apos;s public promo data. Publishing and collecting sales
-          need the shop&apos;s own email login.
-        </Notice>
+        <Notice title="Read-only">Log in as this shop to publish or collect.</Notice>
       ) : null}
       {shown ? (
         <Ledger merchant={shown} canAct={!readOnly && Boolean(mine)} refreshKey={refreshKey} />
       ) : (
         <div className="max-w-xl rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10">
-          <LoginCard
-            title="Log in as the shop"
-            lead="Use the shop's email. You'll see its promos, sales held in escrow, the simulated cover and sales to collect."
-          />
+          <LoginCard title="Log in as the shop" />
         </div>
       )}
     </section>

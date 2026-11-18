@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { publicConfig } from "@/lib/config";
-import { shortAddr } from "@/lib/format";
 
 /* ---------- Buttons ---------- */
 
@@ -9,8 +8,8 @@ type Variant = "primary" | "secondary" | "ghost" | "note";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-ink text-paper-raised hover:bg-[#1d3157] active:translate-y-px disabled:bg-ink-faint disabled:text-paper",
-  note: "bg-note text-paper-raised hover:bg-[#185a4c] active:translate-y-px disabled:bg-ink-faint",
+    "bg-ink text-paper-raised hover:bg-[#21392c] active:translate-y-px disabled:bg-ink-faint disabled:text-paper",
+  note: "bg-note text-paper-raised hover:bg-[#175c3b] active:translate-y-px disabled:bg-ink-faint",
   secondary:
     "bg-paper-raised text-ink ring-1 ring-ink/25 hover:ring-ink/60 active:translate-y-px disabled:text-ink-faint",
   ghost: "text-ink hover:bg-ink/5 disabled:text-ink-faint",
@@ -107,21 +106,20 @@ function OutIcon() {
 }
 
 /**
- * A REAL Arc testnet record (transaction or address), opening the Arc explorer. Violet and solid,
- * never used for anything simulated. In the dev-only wallet fixture every record is made up, so
- * the same chip turns grey, says so, and links nowhere.
+ * A REAL Arc testnet record (transaction or address) as a plain violet link to the Arc explorer;
+ * the full hash is in the tooltip. Never used for anything simulated. In the dev-only fixture every
+ * record is made up, so the link turns grey and goes nowhere.
  */
 export function ChainLink({
   href,
-  label,
+  label = "View on Arc",
   value,
   network = "Arc testnet",
-  compact,
 }: {
   href: string;
-  /** What it is, e.g. "Payment" or "Escrow". */
+  /** What it is, e.g. "Payment". */
   label?: string;
-  /** Transaction hash or address, shortened in the UI. */
+  /** Transaction hash or address (shown in the tooltip). */
   value: string;
   network?: string;
   compact?: boolean;
@@ -129,13 +127,10 @@ export function ChainLink({
   if (publicConfig.walletFixture) {
     return (
       <span
-        title={`${label ? `${label}: ` : ""}${value} (fixture: not a real ${network} record)`}
-        className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-paper-deep px-2 py-0.5 text-[13px] text-ink-soft border border-dashed border-ink/30"
+        title={`${value} (fixture: not a real ${network} record)`}
+        className="text-[13px] font-semibold text-ink-faint line-through decoration-ink-faint/50"
       >
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-current" aria-hidden />
-        {compact ? null : <span className="font-semibold">{label ?? network}</span>}
-        <span className="truncate font-mono text-[12px]">{shortAddr(value, compact ? 4 : 5)}</span>
-        <span className="text-[11px] text-stamp">fixture</span>
+        {label}
       </span>
     );
   }
@@ -144,21 +139,22 @@ export function ChainLink({
       href={href}
       target="_blank"
       rel="noreferrer"
-      title={`${label ? `${label}: ` : ""}${value} (real ${network} record, opens the Arc explorer)`}
-      className="group inline-flex max-w-full items-center gap-1.5 rounded-md bg-chain-soft px-2 py-0.5 text-[13px] text-chain ring-1 ring-chain/25 transition-colors hover:bg-chain hover:text-paper-raised"
+      title={`${value} (real ${network} record)`}
+      className="inline-flex items-center gap-1 text-[13px] font-semibold text-chain underline decoration-chain/40 underline-offset-2 hover:decoration-chain"
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden />
-      {compact ? null : <span className="font-semibold">{label ?? network}</span>}
-      <span className="truncate font-mono text-[12px]">{shortAddr(value, compact ? 4 : 5)}</span>
+      {label}
       <OutIcon />
     </a>
   );
 }
 
-/** Marks a value as SIMULATED (no Gemini order exists). Hatched ochre, never violet. */
+/** Marks a number as a SIMULATED hedge (no Gemini order exists). Ochre, dashed, never violet. */
 export function SimTag({ children = "Simulated hedge" }: { children?: ReactNode }) {
   return (
-    <span className="bg-hatch-soft inline-flex items-center gap-1 rounded-md px-1.5 py-px text-[12px] font-semibold text-sim ring-1 ring-sim/35">
+    <span
+      title="Priced from Gemini's live order book. No order is placed."
+      className="text-[12px] font-semibold whitespace-nowrap text-sim underline decoration-sim/60 decoration-dashed underline-offset-[3px]"
+    >
       {children}
     </span>
   );
@@ -166,8 +162,7 @@ export function SimTag({ children = "Simulated hedge" }: { children?: ReactNode 
 
 export function ChainTag({ children = "On Arc" }: { children?: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-chain-soft px-1.5 py-px text-[12px] font-semibold text-chain ring-1 ring-chain/25">
-      <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+    <span title="Real record on Arc testnet" className="text-[12px] font-semibold text-chain">
       {children}
     </span>
   );
@@ -269,18 +264,33 @@ export function Field({
   htmlFor,
 }: {
   label: ReactNode;
-  hint?: ReactNode;
+  /** Shown on hover, not inline. */
+  hint?: string;
   children: ReactNode;
   htmlFor?: string;
 }) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="text-[14px] font-semibold">
+      <label htmlFor={htmlFor} className="flex items-center gap-1.5 text-[14px] font-semibold">
         {label}
+        {hint ? <Info text={hint} /> : null}
       </label>
       <div className="mt-1.5">{children}</div>
-      {hint ? <p className="mt-1 text-[13px] text-ink-soft">{hint}</p> : null}
     </div>
+  );
+}
+
+/** Edge-case detail lives here: a small "i" with the text in its tooltip. */
+export function Info({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      aria-label={text}
+      role="img"
+      className="inline-grid h-4 w-4 cursor-help place-items-center rounded-full text-[10px] font-bold text-ink-soft ring-1 ring-ink/30"
+    >
+      i
+    </span>
   );
 }
 

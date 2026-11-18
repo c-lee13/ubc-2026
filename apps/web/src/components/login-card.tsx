@@ -10,7 +10,7 @@ import { Button, inputClass, Notice, Spinner } from "./ui";
  */
 export function LoginCard({
   title = "Log in with your email",
-  lead = "We'll email you a 6-digit code. That's the whole setup: your dollars live in a wallet Circle creates for this email.",
+  lead,
   compact,
 }: {
   title?: string;
@@ -24,9 +24,8 @@ export function LoginCard({
 
   if (!w.available) {
     return (
-      <Notice tone="warn" title="Email login isn't set up on this site">
-        Set NEXT_PUBLIC_CIRCLE_APP_ID (Circle console: Wallets, User Controlled, Configurator) and
-        restart the web app.
+      <Notice tone="warn" title="Email login isn't set up">
+        Missing NEXT_PUBLIC_CIRCLE_APP_ID.
       </Notice>
     );
   }
@@ -42,7 +41,7 @@ export function LoginCard({
       {compact ? null : (
         <div>
           <h3 className="font-wide text-[19px] font-bold">{title}</h3>
-          <p className="mt-1 text-[14.5px] text-ink-soft">{lead}</p>
+          {lead ? <p className="mt-1 text-[14.5px] text-ink-soft">{lead}</p> : null}
         </div>
       )}
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -96,9 +95,9 @@ function phaseText(p: string): string {
 function phaseDetail(p: string): string {
   switch (p) {
     case "sending-code":
-      return "Asking Circle to email you a code…";
+      return "Sending your code…";
     case "awaiting-code":
-      return "Enter the code from your email in the window that opened.";
+      return "Enter the code from your email.";
     case "creating-wallet":
       return "Creating your dollar wallet…";
     default:

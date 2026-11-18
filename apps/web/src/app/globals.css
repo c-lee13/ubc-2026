@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 /*
- * Design tokens. The product is a conditional refund, so the visual language is security printing:
- * cool banknote paper, intaglio navy ink, guilloche green. Two kinds of truth are always visibly
- * different: violet = a real Devnet record, hatched ochre = a simulated hedge.
+ * Design tokens. The product is a dollar refund, so the visual language is currency printing:
+ * banknote paper, green-black intaglio ink, dollar-green guilloche, red rubber stamps. Two kinds of
+ * truth stay visibly different: violet = a real on-chain record, hatched ochre = a simulated hedge.
  */
 @theme {
-  --color-paper: #eef1ec;
-  --color-paper-raised: #f8f9f6;
-  --color-paper-deep: #e2e7e1;
-  --color-ink: #13233f;
-  --color-ink-soft: #4b5873;
-  --color-ink-faint: #7d879b;
-  --color-rule: #c6cfc8;
-  --color-note: #1e6a5a;
-  --color-note-soft: #d5e6df;
+  --color-paper: #edf0e8;
+  --color-paper-raised: #f8f9f4;
+  --color-paper-deep: #e0e6dc;
+  --color-ink: #14261d;
+  --color-ink-soft: #4a5b51;
+  --color-ink-faint: #7e8b83;
+  --color-rule: #c5cfc4;
+  --color-note: #1d7048;
+  --color-note-soft: #d3e8da;
   --color-chain: #5b3cc4;
   --color-chain-soft: #e7e1fb;
   --color-sim: #9a6510;

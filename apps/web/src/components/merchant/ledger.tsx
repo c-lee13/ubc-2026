@@ -77,12 +77,7 @@ export function Ledger({
   const notFound = dash.error instanceof ApiError && dash.error.code === "merchant_not_found";
   if (!dash.data) {
     if (notFound) {
-      return (
-        <EmptyLedger>
-          No promos from this shop yet. Publish the first one below and it shows up here with its
-          sales, escrow and cover.
-        </EmptyLedger>
-      );
+      return <EmptyLedger>No promos yet. Publish one below.</EmptyLedger>;
     }
     if (dash.error) {
       const p = describe(dash.error);
@@ -141,7 +136,6 @@ export function Ledger({
             </>
           }
           value={lists.data && !noList ? usd(escrowHeld) : "–"}
-          sub="Owed to buyers or to you, by the result"
         />
         <Stat
           label="Sales"
@@ -151,22 +145,20 @@ export function Ledger({
         <Stat
           label="Cost so far"
           value={usd(totals.premium)}
-          sub={`${totals.contracts} YES contracts`}
+          sub={`${totals.contracts} contracts`}
           sim
         />
         <Stat
           label="Owed if it happens"
           value={usd(totals.hedgedSales)}
-          sub={`Covered by ${usd(BigInt(Math.round(Number(totals.contracts) * 100)) * 10_000n)} of contracts`}
+          sub={`Covered by ${totals.contracts} contracts`}
           sim
         />
       </div>
 
       {noList ? (
-        <Notice tone="warn" title="Purchase list not available">
-          The promo server has no purchase list route yet (GET /api/promotions/:id/purchases) and
-          this site has no escrow address to read Arc directly (NEXT_PUBLIC_ARC_ESCROW_ADDRESS).
-          Totals above still come from the server.
+        <Notice tone="warn" title="No order list on this server yet">
+          Needs GET /api/promotions/:id/purchases.
         </Notice>
       ) : null}
 
@@ -393,7 +385,7 @@ function PromoRow({
         </div>
       ) : null}
 
-      {open ? <Purchases promo={promo} list={list} /> : null}
+      {open ? <Purchases list={list} /> : null}
     </div>
   );
 }
@@ -427,9 +419,7 @@ function PhaseBadge({
         : `in ${countdown(left)}`
       : null;
   const badge = (cls: string, text: string, pulse?: boolean) => (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${cls}`}
-    >
+    <span className={`inline-flex items-center gap-1.5 text-[15px] font-bold ${cls}`}>
       <span
         className={`h-1.5 w-1.5 rounded-full bg-current ${pulse ? "animate-pulse-dot" : ""}`}
         aria-hidden
@@ -441,7 +431,7 @@ function PhaseBadge({
     case "LIVE":
       return (
         <div>
-          {badge("bg-note-soft text-note", "Selling", true)}
+          {badge("text-note", "Selling", true)}
           <p className="mt-1 text-[13px] text-ink-soft">
             At {cents(live.liveAskMicroUsd)}. Sales close {until ?? clock(promo.depositDeadline)}
           </p>
@@ -450,7 +440,7 @@ function PhaseBadge({
     case "PAUSED":
       return (
         <div>
-          {badge("bg-sim-soft text-sim", "Paused")}
+          {badge("text-sim", "Paused")}
           <p className="mt-1 text-[13px] text-ink-soft">
             {live.pauseReason === "PRICE_ABOVE_THRESHOLD"
               ? `Market ${cents(live.liveAskMicroUsd)} is over your ${cents(promo.maxYesPriceMicroUsd)} limit`
@@ -463,7 +453,7 @@ function PhaseBadge({
     case "WAITING_FOR_RESULT":
       return (
         <div>
-          {badge("bg-ink/[0.07] text-ink", "Waiting for result")}
+          {badge("text-ink", "Waiting for result")}
           <p className="mt-1 text-[13px] text-ink-soft">
             Sales closed {clock(promo.depositDeadline)}
           </p>
@@ -472,7 +462,7 @@ function PhaseBadge({
     case "RESULT_YES":
       return (
         <div>
-          {badge("bg-chain-soft text-chain", "It happened")}
+          {badge("text-chain", "It happened")}
           <p className="mt-1 text-[13px] text-ink-soft">
             Buyers claim refunds; your cover paid out
           </p>
@@ -481,7 +471,7 @@ function PhaseBadge({
     case "RESULT_NO":
       return (
         <div>
-          {badge("bg-ink text-paper-raised", "Didn't happen")}
+          {badge("text-ink", "Didn't happen")}
           <p className="mt-1 text-[13px] text-ink-soft">
             {toCollect > 0
               ? `${toCollect} covered sale${toCollect === 1 ? "" : "s"} to collect`
@@ -492,7 +482,7 @@ function PhaseBadge({
         </div>
       );
     default:
-      return badge("bg-ink/[0.07] text-ink", promo.onChainState);
+      return badge("text-ink", promo.onChainState);
   }
 }
 
@@ -507,7 +497,7 @@ const STATE_TEXT: Record<PurchaseReceiptDto["onChainState"], string> = {
   ClaimedByMerchant: "Collected by you",
 };
 
-function Purchases({ promo, list }: { promo: Promo; list: PurchaseList | null | undefined }) {
+function Purchases({ list }: { list: PurchaseList | null | undefined }) {
   if (list === undefined) {
     return (
       <p className="flex items-center gap-2 border-t border-ink/10 bg-paper/60 px-5 py-4 text-[14px] text-ink-soft">
@@ -609,12 +599,6 @@ function Purchases({ promo, list }: { promo: Promo; list: PurchaseList | null | 
           })}
         </tbody>
       </table>
-      <p className="px-5 py-2 text-[12px] text-ink-faint">
-        {list.source === "chain"
-          ? "Purchases read from the Arc escrow; statuses from the promo server."
-          : "Purchases and statuses from the promo server."}{" "}
-        Hand over the {promo.itemName.toLowerCase()} only once a sale is covered.
-      </p>
     </div>
   );
 }
@@ -654,10 +638,7 @@ function Drafts({
         Drafts not published ({drafts.length})
         {resumable.length ? `, ${resumable.length} can be finished here` : ""}
       </summary>
-      <p className="mt-2 text-[13px] text-ink-soft">
-        A draft does nothing until the shop approves it in its wallet, so unpublished drafts are
-        safe to ignore.
-      </p>
+
       <ul className="mt-3 space-y-2">
         {drafts.slice(0, 20).map((d) => (
           <DraftRow

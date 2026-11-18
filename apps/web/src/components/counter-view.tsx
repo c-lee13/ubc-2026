@@ -6,7 +6,7 @@ import { describe } from "@/lib/errors";
 import { chance, clock, conditionText, countdown, orderNumber, usd } from "@/lib/format";
 import { useNowSeconds, useOrigin, usePoll } from "@/lib/hooks";
 import { QrCode } from "./qr";
-import { Notice, SimTag, Spinner } from "./ui";
+import { Notice, Spinner } from "./ui";
 import { Seal } from "./voucher";
 
 /**
@@ -81,8 +81,7 @@ export function CounterView({ promoId }: { promoId: string }) {
               <div className="aspect-square" />
             )}
           </div>
-          <p className="mt-3 text-center text-[15px] font-semibold">Scan to pay with your email</p>
-          <p className="mt-1 text-center text-[13px] break-all text-ink-faint">{link}</p>
+          <p className="mt-3 text-center text-[17px] font-bold">Scan to pay with your email</p>
         </div>
         <div className="rounded-2xl bg-paper-raised px-5 py-4 ring-1 ring-ink/10">
           {live?.phase === "LIVE" ? (
@@ -96,8 +95,7 @@ export function CounterView({ promoId }: { promoId: string }) {
             </p>
           ) : live?.phase === "PAUSED" ? (
             <p className="text-[15px]">
-              <strong className="text-sim">Paused.</strong> Not selling because{" "}
-              {pauseText(live.pauseReason)}. Customers can&apos;t pay right now.
+              <strong className="text-sim">Paused</strong>: {pauseText(live.pauseReason)}.
             </p>
           ) : (
             <p className="text-[15px]">
@@ -122,17 +120,11 @@ export function CounterView({ promoId }: { promoId: string }) {
             Live
           </span>
         </div>
-        <p className="mt-1 text-[14px] text-ink-soft">
-          Serve only orders marked <strong className="text-note">Paid &amp; hedged: serve</strong>.
-          Match the order number on the customer&apos;s phone.
-        </p>
 
         <div className="mt-5 space-y-3">
           {orders.data === null ? (
-            <Notice tone="warn" title="Order feed not available">
-              The promo server has no order list yet (GET /api/promotions/:id/purchases) and this
-              site has no escrow address to read Arc directly. Customers&apos; receipts still say
-              whether to serve.
+            <Notice tone="warn" title="No order feed on this server yet">
+              Needs GET /api/promotions/:id/purchases.
             </Notice>
           ) : orders.data === undefined ? (
             orders.error ? (
@@ -146,7 +138,7 @@ export function CounterView({ promoId }: { promoId: string }) {
             )
           ) : rows.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-ink/25 px-6 py-12 text-center text-ink-soft">
-              No orders yet. They appear here the moment a customer pays.
+              No orders yet.
             </div>
           ) : (
             rows.map((r) => <OrderRow key={r.purchasePda} r={r} item={p.itemName} />)
@@ -173,18 +165,15 @@ function OrderRow({ r, item }: { r: PurchaseReceiptDto; item: string }) {
         </p>
         <p className="text-[13.5px] opacity-85">
           {r.canServe
-            ? `${item}, ${usd(r.amount)}. ${r.promotion.resolvedOutcome ? (r.promotion.resolvedOutcome === "YES" ? "It happened: customer gets the money back." : "It didn't happen: the shop keeps it.") : "Covered."}`
+            ? `${item}, ${usd(r.amount)}`
             : refund
-              ? "The hedge didn't go through; the customer's payment is being returned."
-              : "Covering the refund at the market price. Usually a few seconds."}
+              ? `No ${item.toLowerCase()}. Payment going back.`
+              : "Covering it now…"}
         </p>
       </div>
       {r.hedge && r.hedge.premium && r.canServe ? (
-        <span className="rounded-lg bg-paper-raised/15 px-2.5 py-1 text-[12.5px]">
-          Cover {usd(r.hedge.premium)}{" "}
-          <span className="opacity-80">
-            <SimTag>Simulated hedge</SimTag>
-          </span>
+        <span className="text-[13px] opacity-90">
+          Cover {usd(r.hedge.premium)} <span className="opacity-80">(simulated hedge)</span>
         </span>
       ) : null}
     </div>

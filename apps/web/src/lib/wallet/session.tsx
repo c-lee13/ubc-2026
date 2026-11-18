@@ -60,16 +60,18 @@ export function WalletSessionProvider({ children }: { children: ReactNode }) {
 
   const driver = useCallback((): Promise<WalletDriver> => {
     if (!driverRef.current) {
-      driverRef.current = fixture
-        ? import("./fixture").then((m) => m.createFixtureDriver())
-        : publicConfig.circleAppId
-          ? import("./circle").then((m) => m.createCircleDriver(publicConfig.circleAppId!))
-          : Promise.reject(
-              new WalletUserError(
-                "Email login isn't set up",
-                "This site has no Circle App ID (NEXT_PUBLIC_CIRCLE_APP_ID), so it can't log anyone in.",
-              ),
-            );
+      // Inline flag: production builds drop the fixture import (see lib/client.ts).
+      driverRef.current =
+        process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_WALLET_FIXTURE === "1"
+          ? import("./fixture").then((m) => m.createFixtureDriver())
+          : publicConfig.circleAppId
+            ? import("./circle").then((m) => m.createCircleDriver(publicConfig.circleAppId!))
+            : Promise.reject(
+                new WalletUserError(
+                  "Email login isn't set up",
+                  "This site has no Circle App ID (NEXT_PUBLIC_CIRCLE_APP_ID), so it can't log anyone in.",
+                ),
+              );
       driverRef.current.catch(() => (driverRef.current = null));
     }
     return driverRef.current;

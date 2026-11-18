@@ -14,8 +14,10 @@ export interface VoucherProps {
   condition: string;
   /** Right-hand terms line, e.g. "Sales close 2:55 AM". */
   closesLabel?: string | null;
-  /** Serial printed top right: the promo PDA once it exists. */
+  /** Serial printed top right: the promo id once it exists. */
   serial?: string | null;
+  /** An illustration, not a real promo: printed as "Sample" in the serial slot. */
+  sample?: boolean;
   marketId: string;
   stamp?: { text: string; tone: StampTone } | null;
   /** Tilt for the hero presentation. */
@@ -49,7 +51,7 @@ export function Voucher(props: VoucherProps) {
       className={`@container w-full ${props.tilt ? "md:-rotate-[2.5deg]" : ""} ${props.className ?? ""}`}
       aria-label={`Promo voucher: your ${dollars} back if ${props.condition}`}
     >
-      <div className="relative aspect-[4/5] overflow-hidden rounded-[18px] bg-paper-raised text-ink shadow-[0_1px_0_rgb(255_255_255/0.9)_inset,0_28px_60px_-28px_rgb(19_35_63/0.55),0_2px_6px_-2px_rgb(19_35_63/0.25)] @min-[420px]:aspect-[2/1]">
+      <div className="relative aspect-[4/5] overflow-hidden rounded-[18px] bg-paper-raised text-ink shadow-[0_1px_0_rgb(255_255_255/0.9)_inset,0_28px_60px_-28px_rgb(20_38_29/0.55),0_2px_6px_-2px_rgb(20_38_29/0.25)] @min-[420px]:aspect-[2/1]">
         {/* Landscape frame */}
         <svg
           aria-hidden
@@ -122,7 +124,11 @@ export function Voucher(props: VoucherProps) {
                 {props.shopName}
               </span>
               <span className="shrink-0 font-mono text-[2.7cqw] text-ink-faint @min-[420px]:text-[1.25cqw]">
-                {props.serial ? `No. ${shortAddr(props.serial, 4)}` : "Draft"}
+                {props.sample
+                  ? "Sample"
+                  : props.serial
+                    ? `No. ${shortAddr(props.serial, 4)}`
+                    : "Draft"}
               </span>
             </div>
             <p className="font-display my-[2.5cqw] text-[8.4cqw] text-balance @min-[420px]:my-0 @min-[420px]:text-[5cqw]">

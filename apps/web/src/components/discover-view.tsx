@@ -15,7 +15,7 @@ export function DiscoverView() {
   const now = useNowSeconds();
   const all = promos.data?.promotions ?? [];
   const selling = all.filter((p) => p.live?.phase === "LIVE");
-  const rest = all.filter((p) => p.live?.phase !== "LIVE").slice(0, 6);
+  const rest = all.filter((p) => p.live?.phase !== "LIVE").slice(0, 4);
 
   if (!promos.data) {
     return promos.error ? (
@@ -37,7 +37,7 @@ export function DiscoverView() {
         </h2>
         {selling.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-ink/25 px-5 py-8 text-center text-ink-soft">
-            Nothing is selling right now. Shops open new promos every few minutes.
+            Nothing selling right now.
           </div>
         ) : (
           <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -83,18 +83,21 @@ function PromoCard({ p, now, muted }: { p: PromotionDto; now: number | null; mut
           </p>
           <p className="mt-0.5 text-[13px] text-ink-soft">
             {p.live?.phase === "LIVE" && left !== null && left > 0
-              ? `Sales close ${clock(p.depositDeadline)} (in ${countdown(left)})`
+              ? `Until ${clock(p.depositDeadline)} (${countdown(left)})`
               : p.live?.phase === "PAUSED"
                 ? "Paused right now"
                 : "Sales closed"}
           </p>
         </div>
         {p.live?.liveAskMicroUsd ? (
-          <span className="shrink-0 rounded-xl bg-note-soft px-2.5 py-1.5 text-center text-note">
-            <span className="font-display block text-[20px] leading-none">
+          <span
+            className="shrink-0 text-right text-note"
+            title="Chance it happens, from Gemini's live price"
+          >
+            <span className="font-display block text-[30px] leading-none">
               {chance(p.live.liveAskMicroUsd)}
             </span>
-            <span className="text-[11px] font-semibold">chance</span>
+            <span className="text-[12px] font-semibold">chance</span>
           </span>
         ) : null}
       </Link>

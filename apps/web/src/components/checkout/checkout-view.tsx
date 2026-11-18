@@ -11,7 +11,6 @@ import {
   conditionText,
   countdown,
   dateTime,
-  marketMeaning,
   usd,
 } from "@/lib/format";
 import { store, useNowSeconds, usePoll } from "@/lib/hooks";
@@ -91,13 +90,10 @@ export function CheckoutView({
 
   const condition = conditionText(p.outcomeLabel, p.geminiMarketId);
   const fine = conditionFinePrint(p.geminiMarketId);
-  const meaning = marketMeaning(p.geminiMarketId);
-  const dollars = usd(p.offerAmount).replace(/\.00$/, "");
 
   return (
-    <div className="grid gap-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-14">
-      {/* DOM order = phone order: voucher, then the live panel, then the explanation. */}
-      <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+    <div className="grid gap-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-x-14">
+      <div className="min-w-0">
         <Voucher
           seed={p.promoPda ?? p.id}
           shopName={p.shop.name}
@@ -111,7 +107,7 @@ export function CheckoutView({
         />
       </div>
 
-      <div className="min-w-0 space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+      <div className="min-w-0 space-y-4">
         {promo.error ? (
           <Notice tone="warn" title={describe(promo.error).title}>
             {describe(promo.error).detail}
@@ -127,28 +123,8 @@ export function CheckoutView({
             ) : null}
           </>
         ) : (
-          <PayPanel promo={p} condition={condition} now={now} onPurchased={opened} />
+          <PayPanel promo={p} condition={condition} fine={fine} now={now} onPurchased={opened} />
         )}
-      </div>
-
-      <div className="min-w-0 space-y-3 self-start lg:col-start-1 lg:row-start-2">
-        <h1 className="font-display text-[28px] sm:text-[36px]">
-          Pay {dollars}. If {condition}, you get your {dollars} back.
-        </h1>
-        <p className="text-[16px] text-ink-soft">
-          Your payment waits in an escrow, not in the shop&apos;s till. If it doesn&apos;t happen,
-          the shop keeps the {dollars} and you keep the {p.itemName.toLowerCase()}.
-        </p>
-        {fine ? <p className="text-[14px] text-ink-soft">{fine}</p> : null}
-        {meaning.kind === "UP_DOWN" &&
-        meaning.closesAt &&
-        now !== null &&
-        meaning.closesAt > now ? (
-          <p className="text-[14px] text-ink-soft">
-            Result due a few seconds after {clock(meaning.closesAt)} (in{" "}
-            {countdown(meaning.closesAt - now)}).
-          </p>
-        ) : null}
       </div>
     </div>
   );
@@ -161,11 +137,13 @@ type PayStep = "approve" | "pay" | "confirm";
 function PayPanel({
   promo,
   condition,
+  fine,
   now,
   onPurchased,
 }: {
   promo: PromotionDto;
   condition: string;
+  fine: string | null;
   now: number | null;
   onPurchased: (purchaseKey: string) => void;
 }) {
@@ -281,25 +259,25 @@ function PayPanel({
 
   return (
     <section className="rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10 sm:p-6">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-wide text-[20px] font-bold">
-          {promo.itemName}, {usd(promo.offerAmount)}
+      <div className="flex items-end justify-between gap-3">
+        <h2 className="font-wide text-[22px] leading-tight font-bold">
+          {promo.itemName}
+          <span className="block text-[15px] font-semibold text-ink-soft">{promo.shop.name}</span>
         </h2>
         {live?.liveAskMicroUsd ? (
-          <span className="text-[13.5px] text-ink-soft">
-            Chance it happens: <strong className="text-ink">{chance(live.liveAskMicroUsd)}</strong>
-          </span>
+          <p className="text-right" title="From Gemini's live market price">
+            <span className="font-display block text-[40px] leading-none text-note">
+              {chance(live.liveAskMicroUsd)}
+            </span>
+            <span className="text-[12.5px] font-semibold text-ink-soft">chance it happens</span>
+          </p>
         ) : null}
       </div>
-      <p className="mt-1 text-[13px] text-ink-soft">
-        {promo.shop.name}
-        {promo.shop.location ? `, ${promo.shop.location}` : ""}
-        {live?.liveAskMicroUsd ? ". Chance from Gemini's live market price." : ""}
-      </p>
 
       <dl className="mt-5 space-y-2.5 border-t border-ink/10 pt-4 text-[15px]">
         <Row k="You pay now" v={usd(promo.offerAmount)} />
         <Row
+          title={fine ?? undefined}
           k={`If ${condition}`}
           v={<span className="font-semibold text-note">{usd(promo.offerAmount)} back to you</span>}
         />
@@ -323,10 +301,7 @@ function PayPanel({
 
         {!ready ? (
           <div className="rounded-xl bg-paper p-4">
-            <LoginCard
-              title="Pay with your email"
-              lead="Type your email and the 6-digit code we send. That's it: no app, no wallet to set up."
-            />
+            <LoginCard title="Pay with your email" />
           </div>
         ) : (
           <>
@@ -342,8 +317,7 @@ function PayPanel({
             </div>
             {short && !blocker ? (
               <Notice tone="warn" title="Add dollars to pay">
-                This costs {usd(promo.offerAmount)}; your balance is {usd(s!.usdcBalance)}.
-                <div className="mt-2">
+                <div className="mt-1">
                   <AddUsdc compact onAdded={status.refresh} />
                 </div>
               </Notice>
@@ -354,15 +328,14 @@ function PayPanel({
               onClick={pay}
               busy={busy}
               disabled={Boolean(blocker || short || !s)}
+              title={
+                s?.needsApproval
+                  ? "First payment: approve once to allow payments, then approve the $5."
+                  : undefined
+              }
             >
               Pay {usd(promo.offerAmount)}
             </Button>
-            {s?.needsApproval && !busy && !blocker ? (
-              <p className="text-[13px] text-ink-soft">
-                First payment: you approve twice (allow payments, then pay). After that, one
-                approval per purchase.
-              </p>
-            ) : null}
             {busy || steps.pay ? <Progress steps={progress} /> : null}
           </>
         )}
@@ -372,18 +345,14 @@ function PayPanel({
             {problem.detail}
           </Notice>
         ) : null}
-        <p className="text-[12.5px] text-ink-faint">
-          Demo on a test network: the dollars have no value. The shop&apos;s cover is a simulated
-          hedge priced from Gemini&apos;s live order book; no real order is placed.
-        </p>
       </div>
     </section>
   );
 }
 
-function Row({ k, v }: { k: ReactNode; v: ReactNode }) {
+function Row({ k, v, title }: { k: ReactNode; v: ReactNode; title?: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-4">
+    <div className="flex items-baseline justify-between gap-4" title={title}>
       <dt className="text-ink-soft">{k}</dt>
       <dd className="text-right font-semibold">{v}</dd>
     </div>

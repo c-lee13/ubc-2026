@@ -12,7 +12,6 @@ import { Button, ButtonLink, ChainLink, Notice, SimTag, Spinner } from "../ui";
 import type { StampTone } from "../voucher";
 
 type StepState = "todo" | "doing" | "done" | "failed" | "skipped";
-const TERMINAL = new Set(["Refunded", "ClaimedByCustomer", "ClaimedByMerchant"]);
 const REFUND_STEPS = new Set(["REFUNDING", "REFUND_READY", "REFUNDED"]);
 
 /**
@@ -37,7 +36,6 @@ export function Receipt({
 
   const receipt = usePoll(() => api.purchase(purchaseKey), 3_000, [purchaseKey]);
   const r = receipt.data ?? null;
-  const done = r ? TERMINAL.has(r.onChainState) : false;
   const notYet = receipt.error instanceof ApiError && receipt.error.code === "purchase_not_found";
   const meaning = marketMeaning(promo.geminiMarketId);
   const outcome = r?.promotion.resolvedOutcome ?? null;
@@ -93,11 +91,7 @@ export function Receipt({
 
       <ol className="px-5 py-5 sm:px-6">
         <TimelineStep n={1} state={r ? "done" : "doing"} title="Paid" last={false}>
-          <p>
-            {r
-              ? `${dollars} is held in the promo's escrow, not in the shop's till.`
-              : "Confirming your payment. This takes a few seconds."}
-          </p>
+          {r ? null : <p>Confirming your payment…</p>}
         </TimelineStep>
 
         <TimelineStep
@@ -113,21 +107,21 @@ export function Receipt({
           {v.covered === "doing" ? (
             <p>
               {r?.step === "REFUNDING"
-                ? "The price moved past the shop's limit. Your payment is being returned."
-                : "Covering your refund at the live market price…"}
+                ? "Not covered. Your $5 is coming back."
+                : "Covering it now…"}
             </p>
           ) : null}
           {v.covered === "failed" ? (
             <p>
-              {r?.hedge?.failureReason ? `Reason: ${failureText(r.hedge.failureReason)}. ` : ""}
-              The escrow returns your full {dollars}.
+              {r?.hedge?.failureReason ? `${capitalize(failureText(r.hedge.failureReason))}. ` : ""}
+              Your full {dollars} comes back.
             </p>
           ) : null}
           {r?.hedge &&
           r.hedge.premium &&
           r.hedge.status !== "FAILED" &&
           r.hedge.status !== "VOIDED" ? (
-            <div className="bg-hatch-soft mt-2 rounded-lg px-3 py-2 ring-1 ring-sim/30">
+            <div className="bg-hatch-soft mt-2 rounded-lg px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-semibold text-ink">
                   {r.hedge.contracts} YES contracts at {cents(r.hedge.avgFillPriceMicroUsd)} ={" "}
@@ -135,10 +129,6 @@ export function Receipt({
                 </p>
                 <SimTag />
               </div>
-              <p className="mt-0.5 text-[12.5px] text-ink-soft">
-                Priced from Gemini&apos;s live order book; no order was placed. Pays $
-                {Number(r.hedge.contracts).toFixed(2)} if it happens.
-              </p>
             </div>
           ) : null}
         </TimelineStep>
@@ -147,25 +137,20 @@ export function Receipt({
           {v.result === "doing" ? (
             <p>
               {meaning.closesAt && now !== null && meaning.closesAt > now
-                ? `The window ends at ${clock(meaning.closesAt)} (in ${countdown(meaning.closesAt - now)}). The official result follows seconds later.`
-                : "Waiting for Gemini's official result. Prices and live scores don't count."}
+                ? `Result at ${clock(meaning.closesAt)} (in ${countdown(meaning.closesAt - now)}).`
+                : "Any second now."}
             </p>
-          ) : v.result === "done" ? (
-            <p>Official Gemini settlement, recorded in the escrow.</p>
           ) : null}
         </TimelineStep>
 
         <TimelineStep n={4} state={v.money} title={moneyTitle(r, dollars)} last>
           {canClaim && !claimed ? (
             <div className="mt-1 space-y-2">
-              <p>It goes to the balance of the email that paid.</p>
               <Button variant="note" busy={busy} onClick={claim} disabled={!isBuyer}>
                 Get my {dollars} back
               </Button>
               {!isBuyer ? (
-                <p className="text-[13px] text-ink-soft">
-                  Log in with the email that paid to get it.
-                </p>
+                <p className="text-[13px] text-ink-soft">Log in with the email that paid.</p>
               ) : null}
             </div>
           ) : r && (r.onChainState === "Refunded" || r.onChainState === "ClaimedByCustomer") ? (
@@ -198,7 +183,6 @@ export function Receipt({
           </ButtonLink>
         </div>
         {r ? <Proof r={r} /> : null}
-        {done ? <p className="text-ink-faint">All settled.</p> : null}
       </footer>
     </section>
   );
@@ -216,16 +200,17 @@ function Proof({ r }: { r: PurchaseReceiptDto }) {
   const items = all.filter((x): x is [string, string] => Boolean(x[1]));
   return (
     <details>
-      <summary className="cursor-pointer font-semibold text-ink-soft">Proof on Arc</summary>
-      <div className="mt-2 flex flex-wrap gap-2">
+      <summary
+        className="cursor-pointer font-semibold text-ink-soft"
+        title={`Escrow state ${r.onChainState}, server status ${r.status}${r.hedge ? `, simulated hedge fingerprint ${r.hedge.fingerprint}` : ""}`}
+      >
+        Proof on Arc
+      </summary>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
         {items.map(([label, hash]) => (
           <ChainLink key={label} href={chain().explorerTx(hash)} label={label} value={hash} />
         ))}
       </div>
-      <p className="mt-1.5 text-ink-faint">
-        Escrow state {r.onChainState}; server status {r.status}.
-        {r.hedge ? ` Simulated hedge fingerprint ${r.hedge.fingerprint.slice(0, 18)}…` : ""}
-      </p>
     </details>
   );
 }
@@ -391,4 +376,8 @@ function TimelineStep({
       </div>
     </li>
   );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

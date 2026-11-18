@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     "A shop offers your money back if something happens. You pay in dollars with an email login; the payment waits in an escrow on Arc and the shop's risk is covered at live Gemini odds (simulated). Test USDC only.",
 };
 
-export const viewport: Viewport = { themeColor: "#13233f" };
+export const viewport: Viewport = { themeColor: "#14261d" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
