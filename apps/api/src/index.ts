@@ -1,6 +1,9 @@
 import { createArcGatewayFromEnv, type ArcGateway } from "@hedged/arc/server";
 import type { SolanaServerGateway } from "@hedged/shared";
 import { createSolanaGatewayFromEnv, type RealSolanaGateway } from "@hedged/solana/server";
+import { ARC_USDC_ERC20 } from "@hedged/arc";
+import { createArcReads } from "./circle/arc-reads";
+import { createCircleClient } from "./circle/client";
 import { loadConfig } from "./config";
 import { createGeminiAdapter } from "./gemini/adapter";
 import { withGeminiCache } from "./gemini/cached";
@@ -69,7 +72,22 @@ const desk = createDesk({
   gemini,
   lotContracts: config.desk.lotContracts,
 });
-const app = await buildServer(config, { gemini, store, gateway, desk, streams });
+// Email-login wallets (Circle) + Arc checkout, when CIRCLE_* and ARC_ESCROW_ADDRESS are set.
+const wallets = {
+  circle: config.circle ? createCircleClient({ apiKey: config.circle.apiKey }) : null,
+  appId: config.circle?.appId ?? null,
+  arc: config.arcCheckout
+    ? {
+        escrow: config.arcCheckout.escrow,
+        token: ARC_USDC_ERC20,
+        reads: createArcReads(config.arcCheckout.rpcUrl, ARC_USDC_ERC20, config.arcCheckout.escrow),
+        blockchain: config.arcCheckout.blockchain,
+        accountType: config.arcCheckout.accountType,
+        allowanceCap: config.arcCheckout.allowanceCap,
+      }
+    : null,
+};
+const app = await buildServer(config, { gemini, store, gateway, desk, streams, wallets });
 if (config.supabase) {
   app.log.info({ supabase: new URL(config.supabase.url).host }, "using Supabase store");
 } else {

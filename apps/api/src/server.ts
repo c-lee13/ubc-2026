@@ -12,8 +12,11 @@ import { registerWriteRateLimit } from "./rate-limit";
 import type { Store } from "./store/types";
 import type { Desk } from "./desk/run";
 import { registerStreamsWebhook, type StreamsWebhookDeps } from "./routes/webhooks";
+import { registerCircleRoutes, type CircleRouteDeps } from "./circle/routes";
 
 export interface ServerDeps {
+  /** Circle email-login wallets + Arc checkout; routes answer 503 when absent. */
+  wallets?: Omit<CircleRouteDeps, "store" | "gemini">;
   /** QuickNode Streams webhook target; POST /webhooks/quicknode returns 503 when absent. */
   streams?: StreamsWebhookDeps | null;
   /** Exposure desk; GET /api/desk returns 503 when absent. */
@@ -35,6 +38,13 @@ export async function buildServer(config: ApiConfig, deps: ServerDeps): Promise<
   registerPromotionRoutes(app, { gemini, store: deps.store, gateway: deps.gateway });
   registerPurchaseRoutes(app, { store: deps.store });
   await registerStreamsWebhook(app, deps.streams ?? null);
+  registerCircleRoutes(app, {
+    circle: deps.wallets?.circle ?? null,
+    appId: deps.wallets?.appId ?? null,
+    arc: deps.wallets?.arc ?? null,
+    store: deps.store,
+    gemini,
+  });
   // Exposure desk: net exposure of all shops per Gemini event and its simulated hedges.
   app.get("/api/desk", async (_req, reply) =>
     deps.desk ? deps.desk.snapshot() : reply.code(503).send({ error: "desk_disabled" }),

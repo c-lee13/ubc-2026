@@ -256,6 +256,10 @@ and dashboard data is derivable from public chain data and public Gemini prices.
 - `POST /webhooks/quicknode` → QuickNode Streams destination (only with `SOLANA_GATEWAY=real` and
   `QUICKNODE_STREAMS_SECURITY_TOKEN`; 503 otherwise). `X-QN-Signature` HMAC over the raw body, stale
   timestamps rejected, gzip accepted; signatures go to the gateway for on-chain verification.
+- **Email-login wallets + Arc checkout** (Circle; `X-User-Token` header): `POST /api/wallet/email-login`,
+  `POST /api/wallet/init`, `GET /api/wallet`, `GET /api/checkout/:promoId/status`,
+  `POST /api/checkout/:promoId/approve`, `POST /api/checkout/:promoId/deposit`, `POST /api/wallet/faucet`.
+  Flow and errors: `docs/email-wallets.md`.
 - `GET /api/purchases/:purchasePda` → customer receipt / barista screen: off-chain `status` and
   on-chain `onChainState` side by side, `step` (PROCESSING | HEDGED | REFUNDING | REFUND_READY |
   REFUNDED | WAITING_FOR_RESULT | YOU_WON | NOT_THIS_TIME | DONE), `canServe` (hand over the item
