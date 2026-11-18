@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { HEDGED_ESCROW_ABI, promoIdOf, purchaseKeyOf } from "@hedged/arc";
+import { SolanaGatewayError } from "@hedged/shared";
 import { decodeFunctionData, erc20Abi, type Hex } from "viem";
 import { loadConfig } from "../config";
 import type { GeminiAdapter } from "../gemini/adapter";
@@ -8,6 +9,7 @@ import { buildServer } from "../server";
 import { MemoryStore } from "../store/memory-store";
 import type { ArcReads } from "./arc-reads";
 import { ALREADY_INITIALIZED, CircleError, type CircleClient } from "./client";
+import type { OneTapSubmitter } from "./routes";
 
 const USER_TOKEN = "eyJ-test-user-token-0123456789";
 const WALLET = {
@@ -48,6 +50,7 @@ function fakeCircle(over: Partial<Record<string, (c: Call) => unknown>> = {}) {
         return { challengeId: `ch-${calls.length}` } as T;
       }
       if (key === "POST /v1/faucet/drips") return undefined as T;
+      if (key === "POST /v1/w3s/user/sign/typedData") return { challengeId: "ch-sign" } as T;
       throw new Error(`unexpected ${key}`);
     },
   };
@@ -62,6 +65,7 @@ async function setup(
     circle?: ReturnType<typeof fakeCircle>;
     pda?: string | null;
     merchant?: string;
+    oneTap?: OneTapSubmitter;
   } = {},
 ) {
   const store = new MemoryStore();
@@ -84,6 +88,7 @@ async function setup(
   const reads: ArcReads = {
     allowance: async () => opts.allowance ?? 0n,
     balance: async () => opts.balance ?? 20_000_000n,
+    isV2: async () => false,
   };
   const gemini = {
     getQuote: async (marketId: string) => ({
@@ -110,6 +115,7 @@ async function setup(
         blockchain: "ARC-TESTNET",
         accountType: "EOA",
         allowanceCap: 100_000_000n,
+        oneTap: opts.oneTap ?? null,
       },
     },
   });
@@ -509,4 +515,158 @@ test("counter feed and customer list: newest first, order code matches the recei
   assert.equal(mine.purchases[0].promotion.shopName, "Bean There");
   assert.equal((await s.app.inject({ url: "/api/purchases?customer=bad" })).statusCode, 400);
   await s.app.close();
+});
+
+function fakeRelayer(fail?: SolanaGatewayError) {
+  const calls: Parameters<OneTapSubmitter["submitAuthorizedDeposit"]>[0][] = [];
+  const relayer: OneTapSubmitter = {
+    async submitAuthorizedDeposit(d) {
+      calls.push(d);
+      if (fail) throw fail;
+      return {
+        purchasePda: purchaseKeyOf(d.promoId, d.customer, d.purchaseIdHex),
+        signature: "0x" + "77".repeat(32),
+      };
+    },
+  };
+  return { relayer, calls };
+}
+
+const SIG = "0x" + "ab".repeat(65);
+
+test("one-tap (v2): sign exactly the promo price for this customer, relayer submits", async () => {
+  const r = fakeRelayer();
+  const s = await setup({ oneTap: r.relayer, allowance: 0n });
+  const status = (
+    await s.app.inject({
+      url: `/api/checkout/${s.promo.id}/status?walletId=${WALLET.id}`,
+      headers: s.auth,
+    })
+  ).json();
+  assert.deepEqual([status.checkout, status.needsApproval], ["one-tap", false]);
+
+  const sign = await s.app.inject({
+    method: "POST",
+    url: `/api/checkout/${s.promo.id}/sign`,
+    headers: s.auth,
+    payload: { walletId: WALLET.id },
+  });
+  assert.equal(sign.statusCode, 200, sign.body);
+  const b = sign.json();
+  assert.equal(b.challengeId, "ch-sign");
+  const call = s.calls.at(-1)!;
+  assert.equal(call.path, "/v1/w3s/user/sign/typedData");
+  assert.equal(call.userToken, USER_TOKEN);
+  assert.equal(call.body!.walletId, WALLET.id);
+  const typed = JSON.parse(String(call.body!.data));
+  assert.equal(typed.primaryType, "ReceiveWithAuthorization");
+  assert.deepEqual(typed.domain, {
+    name: "USDC",
+    version: "2",
+    chainId: 5042002,
+    verifyingContract: USDC,
+  });
+  assert.equal(typed.message.from.toLowerCase(), WALLET.address);
+  assert.equal(typed.message.to.toLowerCase(), ESCROW);
+  assert.equal(typed.message.value, "5000000");
+  assert.equal(typed.message.validAfter, "0");
+  assert.equal(typed.message.validBefore, String(b.validBefore));
+  const expectedKey = purchaseKeyOf(PROMO_PDA as Hex, WALLET.address as Hex, b.purchaseIdHex);
+  assert.equal(typed.message.nonce.toLowerCase(), expectedKey.toLowerCase());
+  assert.equal(b.purchaseKey, expectedKey.toLowerCase());
+  assert.ok(b.validBefore <= Math.floor(Date.now() / 1000) + 300);
+  assert.match(String(call.body!.memo), /Pay \$5\.00 for Latte/);
+
+  const submit = await s.app.inject({
+    method: "POST",
+    url: b.submit,
+    headers: s.auth,
+    payload: {
+      walletId: WALLET.id,
+      purchaseIdHex: b.purchaseIdHex,
+      validBefore: b.validBefore,
+      signature: SIG,
+    },
+  });
+  assert.equal(submit.statusCode, 200, submit.body);
+  assert.equal(submit.json().purchaseKey, b.purchaseKey);
+  assert.equal(submit.json().receipt, `/api/purchases/${b.purchaseKey}`);
+  assert.deepEqual(r.calls[0], {
+    promoId: PROMO_PDA,
+    purchaseIdHex: b.purchaseIdHex,
+    customer: WALLET.address,
+    amount: 5_000_000n,
+    validAfter: 0n,
+    validBefore: BigInt(b.validBefore),
+    signature: SIG,
+  });
+  await s.app.close();
+});
+
+test("one-tap refusals: bad input, expired, price moved, chain rejects, relayer down, v1", async () => {
+  const later = Math.floor(Date.now() / 1000) + 200;
+  const body = (over: Record<string, unknown> = {}) => ({
+    walletId: WALLET.id,
+    purchaseIdHex: "c".repeat(32),
+    validBefore: later,
+    signature: SIG,
+    ...over,
+  });
+  const r = fakeRelayer();
+  const s = await setup({ oneTap: r.relayer });
+  const submit = (payload: Record<string, unknown>) =>
+    s.app.inject({
+      method: "POST",
+      url: `/api/checkout/${s.promo.id}/submit`,
+      headers: s.auth,
+      payload,
+    });
+  assert.equal((await submit(body({ signature: "0x12" }))).json().error, "invalid_signature");
+  assert.equal((await submit(body({ purchaseIdHex: "xyz" }))).json().error, "invalid_purchase_id");
+  assert.equal((await submit(body({ validBefore: 5 }))).json().error, "signature_expired");
+  assert.equal(r.calls.length, 0);
+  await s.app.close();
+
+  const paused = await setup({ oneTap: r.relayer, ask: "900000" });
+  const p = await paused.app.inject({
+    method: "POST",
+    url: `/api/checkout/${paused.promo.id}/submit`,
+    headers: paused.auth,
+    payload: body(),
+  });
+  assert.deepEqual([p.statusCode, p.json().error], [409, "promo_not_buyable"]);
+  assert.equal(r.calls.length, 0, "price moved since signing: nothing submitted");
+  await paused.app.close();
+
+  for (const [err, code, error] of [
+    [new SolanaGatewayError("TX_FAILED", "bad signature"), 409, "deposit_rejected"],
+    [new SolanaGatewayError("RPC_UNAVAILABLE", "down"), 503, "relayer_unavailable"],
+  ] as const) {
+    const t = await setup({ oneTap: fakeRelayer(err).relayer });
+    const res = await t.app.inject({
+      method: "POST",
+      url: `/api/checkout/${t.promo.id}/submit`,
+      headers: t.auth,
+      payload: body(),
+    });
+    assert.deepEqual([res.statusCode, res.json().error], [code, error]);
+    await t.app.close();
+  }
+
+  const v1 = await setup();
+  const sign = await v1.app.inject({
+    method: "POST",
+    url: `/api/checkout/${v1.promo.id}/sign`,
+    headers: v1.auth,
+    payload: { walletId: WALLET.id },
+  });
+  assert.equal(sign.json().error, "one_tap_unavailable");
+  const st = (
+    await v1.app.inject({
+      url: `/api/checkout/${v1.promo.id}/status?walletId=${WALLET.id}`,
+      headers: v1.auth,
+    })
+  ).json();
+  assert.equal(st.checkout, "approve-deposit");
+  await v1.app.close();
 });

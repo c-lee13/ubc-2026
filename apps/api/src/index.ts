@@ -73,6 +73,12 @@ const desk = createDesk({
   lotContracts: config.desk.lotContracts,
 });
 // Email-login wallets (Circle) + Arc checkout, when CIRCLE_* and ARC_ESCROW_ADDRESS are set.
+const arcReads = config.arcCheckout
+  ? createArcReads(config.arcCheckout.rpcUrl, ARC_USDC_ERC20, config.arcCheckout.escrow)
+  : null;
+// v2 escrow + our relayer: one-tap checkout and automatic payouts. v1: approve + deposit, claims.
+const escrowV2 = arcReads ? await arcReads.isV2().catch(() => false) : false;
+const v2Relayer = escrowV2 && arcGateway ? arcGateway : null;
 const wallets = {
   circle: config.circle ? createCircleClient({ apiKey: config.circle.apiKey }) : null,
   appId: config.circle?.appId ?? null,
@@ -80,14 +86,33 @@ const wallets = {
     ? {
         escrow: config.arcCheckout.escrow,
         token: ARC_USDC_ERC20,
-        reads: createArcReads(config.arcCheckout.rpcUrl, ARC_USDC_ERC20, config.arcCheckout.escrow),
+        reads: arcReads!,
         blockchain: config.arcCheckout.blockchain,
         accountType: config.arcCheckout.accountType,
         allowanceCap: config.arcCheckout.allowanceCap,
+        oneTap: v2Relayer,
       }
     : null,
 };
-const app = await buildServer(config, { gemini, store, gateway, desk, streams, wallets });
+const app = await buildServer(config, {
+  gemini,
+  store,
+  gateway,
+  desk,
+  streams,
+  wallets,
+  autoPayout: Boolean(v2Relayer),
+});
+if (config.arcCheckout) {
+  app.log.info(
+    { escrow: config.arcCheckout.escrow, v2: escrowV2, oneTap: Boolean(v2Relayer) },
+    escrowV2
+      ? v2Relayer
+        ? "Arc escrow v2: one-tap checkout and automatic payouts on"
+        : "Arc escrow v2, but SOLANA_GATEWAY is not arc: no relayer, so approve + deposit and claims"
+      : "Arc escrow v1: approve + deposit checkout, customers and shops claim payouts",
+  );
+}
 if (config.supabase) {
   app.log.info({ supabase: new URL(config.supabase.url).host }, "using Supabase store");
 } else {
@@ -134,6 +159,7 @@ try {
     const orchestrator = createOrchestrator({
       store,
       gateway,
+      settler: v2Relayer,
       gemini,
       config: {
         maxQuoteAgeMs: config.hedge.maxQuoteAgeMs,

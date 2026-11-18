@@ -23,6 +23,9 @@ Web SDK: Circle's user-controlled wallets web SDK (`W3SSdk`). App ID: `NEXT_PUBL
 
 ## Checkout (customer at the counter)
 
+> On escrow v2 (`status.checkout === "one-tap"`) use `/sign` + `/submit` instead of the steps below;
+> see `docs/FRONTEND-API.md`. These steps are the v1 / fallback flow.
+
 1. `GET /api/checkout/:promoId/status?walletId=…` → `{ canBuy, pauseReason, price, usdcBalance, enoughBalance, needsApproval }`.
    Disable the pay button unless `canBuy && enoughBalance`.
 2. If `needsApproval` (first purchase only): `POST /api/checkout/:promoId/approve` `{ walletId }` →

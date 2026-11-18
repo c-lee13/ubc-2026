@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
  *   GET  /v1/w3s/wallets                              the user's wallets (X-User-Token)
  *   GET  /v1/w3s/wallets/{id}/balances                token balances (X-User-Token)
  *   POST /v1/w3s/user/transactions/contractExecution  a contract call the user approves (challenge)
+ *   POST /v1/w3s/user/sign/typedData                  an EIP-712 signature the user approves (challenge)
  *   POST /v1/faucet/drips                             testnet tokens (Circle says it may need a mainnet-upgraded account)
  */
 
@@ -42,6 +43,7 @@ const ALLOWED: RegExp[] = [
   /^\/v1\/w3s\/wallets$/,
   /^\/v1\/w3s\/wallets\/[0-9a-f-]{36}\/balances$/,
   /^\/v1\/w3s\/user\/transactions\/contractExecution$/,
+  /^\/v1\/w3s\/user\/sign\/typedData$/,
   /^\/v1\/faucet\/drips$/,
 ];
 
