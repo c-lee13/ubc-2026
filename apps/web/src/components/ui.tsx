@@ -2,16 +2,26 @@ import Link from "next/link";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { publicConfig } from "@/lib/config";
 
-/* ---------- Buttons ---------- */
+/* ---------- Buttons (Zahin's pill buttons) ---------- */
 
 type Variant = "primary" | "secondary" | "ghost" | "note";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-ink text-paper hover:bg-white active:translate-y-px disabled:opacity-40",
-  note: "bg-ribbon text-white hover:brightness-110 active:translate-y-px disabled:opacity-40",
+  primary:
+    "bg-[#6133A7] text-white hover:bg-[#4E2890] disabled:bg-[#E6E1D8] disabled:text-[#5A5463]",
+  note: "bg-ribbon text-white hover:brightness-110 disabled:opacity-40",
   secondary:
-    "bg-paper-raised text-ink ring-1 ring-ink/25 hover:ring-ink/60 active:translate-y-px disabled:text-ink-faint",
-  ghost: "text-ink hover:bg-ink/5 disabled:text-ink-faint",
+    "border border-[#211D28]/30 text-[#211D28] hover:border-[#211D28] hover:bg-white disabled:text-ink-faint",
+  ghost: "text-[#6133A7] hover:bg-[#6133A7]/[0.06] disabled:text-ink-faint",
+};
+
+const FOCUS_RING =
+  "focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6133A7]";
+
+const SIZES = {
+  sm: "h-9 px-4 text-sm rounded-full",
+  md: "h-11 px-6 text-[15px] rounded-full",
+  lg: "min-h-12 px-7 text-base rounded-full",
 };
 
 export function Button({
@@ -26,16 +36,11 @@ export function Button({
   size?: "sm" | "md" | "lg";
   busy?: boolean;
 }) {
-  const sizes = {
-    sm: "h-9 px-3.5 text-sm rounded-md",
-    md: "h-11 px-5 text-[15px] rounded-lg",
-    lg: "h-14 px-7 text-[17px] rounded-xl",
-  };
   return (
     <button
       {...rest}
       disabled={rest.disabled || busy}
-      className={`inline-flex items-center justify-center gap-2 font-semibold whitespace-nowrap transition-colors disabled:cursor-not-allowed ${sizes[size]} ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 font-semibold whitespace-nowrap transition-colors disabled:cursor-not-allowed ${FOCUS_RING} ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
     >
       {busy ? <Spinner /> : null}
       {children}
@@ -56,15 +61,10 @@ export function ButtonLink({
   className?: string;
   children: ReactNode;
 }) {
-  const sizes = {
-    sm: "h-9 px-3.5 text-sm rounded-md",
-    md: "h-11 px-5 text-[15px] rounded-lg",
-    lg: "h-14 px-7 text-[17px] rounded-xl",
-  };
   return (
     <Link
       href={href}
-      className={`inline-flex items-center justify-center gap-2 font-semibold whitespace-nowrap transition-colors ${sizes[size]} ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 font-semibold whitespace-nowrap transition-colors ${FOCUS_RING} ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
     >
       {children}
     </Link>
@@ -206,22 +206,22 @@ export function Notice({
   children?: ReactNode;
   action?: ReactNode;
 }) {
+  // Zahin's message blocks: a 3px left rule on a tinted ground.
   const tones = {
-    info: "bg-paper-raised ring-ink/15 [--bar:var(--color-ink)]",
-    warn: "bg-sim-soft/70 ring-sim/30 [--bar:var(--color-sim)]",
-    error: "bg-stamp-soft/70 ring-stamp/30 [--bar:var(--color-stamp)]",
-    ok: "bg-note-soft/70 ring-note/30 [--bar:var(--color-note)]",
+    info: "border-[#211D28]/40 bg-white text-[#211D28]",
+    warn: "border-[#F58C38] bg-[#FDEBD9]/60 text-[#211D28]",
+    error: "border-[#C4372B] bg-[#FCEDEB] text-[#8A1F16]",
+    ok: "border-[#1E8A5A] bg-[#EAF6F0] text-[#14513A]",
   };
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
-      className={`relative overflow-hidden rounded-lg py-3 pr-4 pl-5 ring-1 ${tones[tone]}`}
+      className={`border-l-[3px] p-4 text-sm leading-relaxed ${tones[tone]}`}
     >
-      <span className="absolute inset-y-0 left-0 w-1 bg-[var(--bar)]" aria-hidden />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold">{title}</p>
-          {children ? <div className="mt-0.5 text-[14px] text-ink-soft">{children}</div> : null}
+          {children ? <div className="mt-1 text-[#4E4858]">{children}</div> : null}
         </div>
         {action}
       </div>
@@ -290,5 +290,6 @@ export function Info({ text }: { text: string }) {
   );
 }
 
+/** Zahin's input: 16px on phones (no iOS focus zoom), 14px from sm up. */
 export const inputClass =
-  "h-11 w-full rounded-lg bg-paper-raised px-3 text-[15px] ring-1 ring-ink/20 outline-none placeholder:text-ink-faint focus:ring-2 focus:ring-chain";
+  "block h-11 w-full rounded-[10px] border border-[#CFC8BC] bg-white px-3.5 text-base text-[#211D28] placeholder:text-[#6B6575] focus:border-[#6133A7] focus:outline-none focus:ring-2 focus:ring-[#6133A7]/20 sm:text-sm";

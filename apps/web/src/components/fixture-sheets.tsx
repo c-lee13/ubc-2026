@@ -18,12 +18,12 @@ export function FixtureSheets() {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-end bg-black/70 p-3 sm:place-items-center"
+      className="fixed inset-0 z-50 grid place-items-end bg-[#211D28]/50 p-3 sm:place-items-center"
       role="dialog"
       aria-modal="true"
       aria-label={sheet.kind === "otp" ? "Fixture email code" : "Fixture approval"}
     >
-      <div className="w-full max-w-sm rounded-2xl bg-paper-raised p-5 shadow-2xl ring-2 ring-stamp/60">
+      <div className="w-full max-w-sm rounded-[20px] bg-white p-5 shadow-2xl ring-2 ring-stamp/60">
         <p className="mb-3 inline-block rounded bg-stamp-soft px-2 py-0.5 text-[12px] font-bold text-stamp">
           Fixture: stands in for Circle&apos;s screen
         </p>

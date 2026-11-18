@@ -47,7 +47,7 @@ export function AccountButton() {
         </Button>
       )}
       {open ? (
-        <div className="absolute right-0 z-30 mt-2 w-[min(92vw,380px)] rounded-xl bg-paper-raised p-4 shadow-[0_18px_40px_-12px_rgb(0_0_0/0.7)] ring-1 ring-ink/15">
+        <div className="absolute right-0 z-30 mt-2 w-[min(92vw,380px)] rounded-[20px] border border-[#E6E1D8] bg-white p-5 shadow-[0_28px_56px_-28px_rgba(33,29,40,0.32)]">
           {ready ? <AccountMenu onDone={() => setOpen(false)} /> : <LoginCard />}
         </div>
       ) : null}

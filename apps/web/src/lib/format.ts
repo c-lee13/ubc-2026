@@ -1,6 +1,13 @@
-import { MOCK_USD_DECIMALS } from "@hedged/shared";
+import { USDC_DECIMALS } from "@hedged/arc";
 
-/** Integer base units (6 decimals) -> "$5.00". Never goes through floating point. */
+/**
+ * Money is integer base units of Arc USDC's ERC-20 interface: 6 decimals, so 5 USDC = "5000000"
+ * (the same scale as the earlier Solana mock mint's MOCK_USD_DECIMALS). Prices are micro-USD per
+ * $1 contract on the same 6-decimal scale. Every helper works on strings and BigInt, never floats.
+ */
+export { USDC_DECIMALS };
+
+/** Integer base units (6 decimals) -> "$5.00", rounded half up to the cent. */
 export function usd(
   base: string | bigint | null | undefined,
   opts: { sign?: boolean } = {},
@@ -9,7 +16,7 @@ export function usd(
   let v = BigInt(base);
   const neg = v < 0n;
   if (neg) v = -v;
-  const unit = 10n ** BigInt(MOCK_USD_DECIMALS);
+  const unit = 10n ** BigInt(USDC_DECIMALS);
   const cents = (v * 100n + unit / 2n) / unit;
   const dollars = cents / 100n;
   const rest = (cents % 100n).toString().padStart(2, "0");
@@ -18,17 +25,29 @@ export function usd(
   return opts.sign ? `+${body}` : body;
 }
 
-/** "5.00" style amount with no dollar sign, for token balances. */
-export function tokenAmount(base: string | bigint): string {
-  return usd(base).replace("$", "");
+/**
+ * Like usd(), but a sub-cent amount is shown exactly instead of rounded, so a valid price such as
+ * 0.000001 never reads as "$0.00" (the rule from Zahin's create-form preview).
+ */
+export function usdExact(base: string | bigint | null | undefined): string {
+  if (base === null || base === undefined || base === "") return "–";
+  const v = BigInt(base);
+  if (v < 0n || v % 10n ** BigInt(USDC_DECIMALS - 2) === 0n) return usd(v);
+  const digits = v.toString().padStart(USDC_DECIMALS + 1, "0");
+  const whole = BigInt(digits.slice(0, -USDC_DECIMALS)).toLocaleString("en-US");
+  const frac = digits.slice(-USDC_DECIMALS).replace(/0+$/, "");
+  return `$${whole}.${frac}`;
 }
 
-/** Dollars typed by a person ("5", "5.5") -> base units string, or null if not a valid amount. */
+/**
+ * Dollars typed by a person ("5", "5.25", ".5") -> base units string, or null if it is not a
+ * plain amount with at most 6 whole digits and 6 decimals (no signs, commas or exponents).
+ */
 export function dollarsToBase(input: string): string | null {
-  const m = /^\s*(\d{1,6})(?:\.(\d{0,6}))?\s*$/.exec(input);
-  if (!m) return null;
-  const frac = (m[2] ?? "").padEnd(MOCK_USD_DECIMALS, "0");
-  return (BigInt(m[1]!) * 10n ** BigInt(MOCK_USD_DECIMALS) + BigInt(frac || "0")).toString();
+  const m = /^\s*(\d{1,6})?(?:\.(\d{0,6}))?\s*$/.exec(input);
+  if (!m || (!m[1] && !m[2])) return null;
+  const frac = (m[2] ?? "").padEnd(USDC_DECIMALS, "0");
+  return (BigInt(m[1] ?? "0") * 10n ** BigInt(USDC_DECIMALS) + BigInt(frac)).toString();
 }
 
 /** micro-USD per $1 contract -> "50¢" (or "$1.00"). */

@@ -1,35 +1,38 @@
 @import "tailwindcss";
 
 /*
- * Design tokens, taken from the Wincentive logo: a violet to magenta to amber ribbon that ends in a
- * price tag, on black. The ribbon gradient is the one loud thing (the promo tag, the payoff moments);
- * everything else is quiet near-black and off-white. Meanings stay fixed: pink = a good outcome,
- * lavender = a real record on Arc, hatched amber = a simulated hedge, red = stop.
+ * Zahin's Wincentive palette (warm off-white paper, near-black ink, purple primary, orange accent)
+ * as named tokens. Zahin's screens use the hex values directly; the prototype's screens (Discover,
+ * My purchases, the counter screen) and shared pieces (login, buttons, notices) use these names, so
+ * every page reads as one design. Meanings stay fixed: purple = a good outcome or the main action,
+ * deep purple = a real record on Arc, hatched orange = a simulated hedge, red = stop.
  */
 @theme {
-  --color-paper: #0b0710;
-  --color-paper-raised: #15101d;
-  --color-paper-deep: #221a2d;
-  --color-ink: #f5f0fa;
-  --color-ink-soft: #a99db9;
-  --color-ink-faint: #6f6481;
-  --color-rule: #2d2439;
-  --color-note: #ff4fb0;
-  --color-note-soft: #3b1430;
-  --color-chain: #a98bff;
-  --color-chain-soft: #231a45;
-  --color-sim: #ffb020;
-  --color-sim-soft: #33260b;
-  --color-stamp: #ff4d4f;
-  --color-stamp-soft: #3a1214;
+  --color-paper: #faf9f6;
+  --color-paper-raised: #ffffff;
+  --color-paper-deep: #f1ece2;
+  --color-ink: #211d28;
+  --color-ink-soft: #5a5463;
+  --color-ink-faint: #8a8494;
+  --color-rule: #e6e1d8;
+  --color-note: #6133a7;
+  --color-note-soft: #efe9f8;
+  --color-chain: #3f2a66;
+  --color-chain-soft: #efe9f8;
+  --color-sim: #7a4208;
+  --color-sim-soft: #fdebd9;
+  --color-stamp: #c4372b;
+  --color-stamp-soft: #fcedeb;
 
-  --color-ribbon-violet: #7a2bff;
-  --color-ribbon-magenta: #e93fd0;
-  --color-ribbon-pink: #ff4f8e;
-  --color-ribbon-orange: #ff6b2c;
-  --color-ribbon-amber: #ffb020;
+  /* The logo ribbon, as in Zahin's brand hairline. */
+  --color-ribbon-violet: #6133a7;
+  --color-ribbon-magenta: #b13bd8;
+  --color-ribbon-pink: #f5539c;
+  --color-ribbon-orange: #f58c38;
+  --color-ribbon-amber: #f5a623;
 
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  /* Fonts are vendored in app/fonts and loaded once in app/layout.tsx (next/font/local). */
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
   --animate-stamp: stamp-land 420ms cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
@@ -63,23 +66,18 @@
   html {
     background: var(--color-paper);
     color: var(--color-ink);
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
   }
   body {
     font-family: var(--font-sans);
-    font-size: 16px;
-    line-height: 1.5;
-    font-feature-settings: "tnum" 1;
   }
   ::selection {
-    background: var(--color-ribbon-violet);
+    background: #6133a7;
     color: #fff;
   }
+  /* Default focus ring for anything without its own (Zahin's components set theirs explicitly). */
   :focus-visible {
-    outline: 2.5px solid var(--color-chain);
+    outline: 2px solid #6133a7;
     outline-offset: 2px;
-    border-radius: 3px;
   }
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -92,24 +90,25 @@
   }
 }
 
+/* Big numbers and headings in the prototype's screens, in Zahin's display face. */
 @utility font-display {
-  font-stretch: 125%;
-  font-variation-settings: "wdth" 125;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.035em;
   line-height: 0.98;
+  font-variant-numeric: tabular-nums;
 }
 
 @utility font-wide {
-  font-stretch: 118%;
-  font-variation-settings: "wdth" 118;
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.015em;
 }
 
 /* Simulated values: diagonal hatching, the drafting convention for "projected, not real". */
 @utility bg-hatch {
   background-image: repeating-linear-gradient(
     -45deg,
-    color-mix(in oklab, var(--color-sim) 22%, transparent) 0 1px,
+    color-mix(in oklab, var(--color-ribbon-orange) 26%, transparent) 0 1px,
     transparent 1px 6px
   );
 }
@@ -118,31 +117,18 @@
   background-color: var(--color-sim-soft);
   background-image: repeating-linear-gradient(
     -45deg,
-    color-mix(in oklab, var(--color-sim) 16%, transparent) 0 1px,
+    color-mix(in oklab, var(--color-ribbon-orange) 22%, transparent) 0 1px,
     transparent 1px 7px
   );
 }
 
-/* The logo's ribbon. Fills for the payoff moments; white text stays readable across it. */
+/* The logo's ribbon (Zahin's brand hairline gradient). Fills for the payoff moments. */
 @utility bg-ribbon {
   background-image: linear-gradient(
     100deg,
     var(--color-ribbon-violet) 0%,
-    var(--color-ribbon-magenta) 45%,
-    var(--color-ribbon-pink) 72%,
+    var(--color-ribbon-magenta) 40%,
+    var(--color-ribbon-pink) 66%,
     var(--color-ribbon-orange) 100%
   );
-}
-
-@utility text-ribbon {
-  background-image: linear-gradient(
-    100deg,
-    var(--color-ribbon-violet),
-    var(--color-ribbon-magenta) 40%,
-    var(--color-ribbon-orange) 80%,
-    var(--color-ribbon-amber)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
 }
