@@ -3,11 +3,10 @@
 import { ApiError, pauseText, type PurchaseReceiptDto } from "@/lib/api";
 import { api, chain } from "@/lib/client";
 import { describe } from "@/lib/errors";
-import { chance, clock, conditionText, countdown, orderNumber, usd } from "@/lib/format";
+import { chance, conditionText, countdown, orderNumber, usd } from "@/lib/format";
 import { useNowSeconds, useOrigin, usePoll } from "@/lib/hooks";
 import { QrCode } from "./qr";
 import { Notice, Spinner } from "./ui";
-import { Seal } from "./voucher";
 
 /**
  * The barista's screen: the promo's QR code for customers to scan, and the live order feed. An
@@ -55,58 +54,44 @@ export function CounterView({ promoId }: { promoId: string }) {
   const link = `${origin}/checkout/${p.id}`;
   const cond = conditionText(p.outcomeLabel, p.geminiMarketId);
   const live = p.live;
+  const selling = live?.phase === "LIVE";
   const rows = [...(orders.data?.rows ?? [])].reverse();
 
   return (
-    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[400px_minmax(0,1fr)] lg:gap-12">
-      <aside className="space-y-5 lg:sticky lg:top-6 lg:self-start">
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-12">
+      <aside className="lg:sticky lg:top-6 lg:self-start">
         <div className="rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10">
-          <div className="flex items-center gap-3">
-            <Seal
-              seed={p.promoPda ?? p.id}
-              size={52}
-              label={usd(p.offerAmount).replace(/\.00$/, "")}
-            />
-            <div className="min-w-0">
-              <p className="truncate text-[14px] text-ink-soft">{p.shop.name}</p>
-              <p className="font-wide text-[19px] font-bold leading-tight">
-                {p.itemName} {usd(p.offerAmount).replace(/\.00$/, "")}, free if {cond}
-              </p>
-            </div>
-          </div>
-          <div className="mx-auto mt-5 w-full max-w-[280px] overflow-hidden rounded-xl ring-1 ring-ink/15">
+          <p className="font-wide text-[22px] leading-tight font-bold">
+            {p.itemName} {usd(p.offerAmount).replace(/\.00$/, "")}, free if {cond}
+          </p>
+          <p className="mt-1 text-[15px] text-ink-soft">{p.shop.name}</p>
+          <div className="relative mx-auto mt-5 w-full overflow-hidden rounded-xl ring-1 ring-ink/15">
             {origin ? (
-              <QrCode value={link} label={`QR code: ${link}`} className="w-full" />
+              <div className={selling ? "" : "opacity-25"}>
+                <QrCode value={link} label={`QR code: ${link}`} className="w-full" />
+              </div>
             ) : (
               <div className="aspect-square" />
             )}
+            {!selling ? (
+              <div className="absolute inset-0 grid place-items-center">
+                <span
+                  className={`font-display -rotate-12 rounded-lg border-4 bg-paper-raised/70 px-4 py-2 text-[34px] tracking-[0.04em] ${live?.phase === "PAUSED" ? "border-sim text-sim" : "border-stamp text-stamp"}`}
+                  title={live?.phase === "PAUSED" ? pauseText(live.pauseReason) : undefined}
+                >
+                  {live?.phase === "PAUSED" ? "PAUSED" : "SALES CLOSED"}
+                </span>
+              </div>
+            ) : null}
           </div>
-          <p className="mt-3 text-center text-[17px] font-bold">Scan to pay with your email</p>
-        </div>
-        <div className="rounded-2xl bg-paper-raised px-5 py-4 ring-1 ring-ink/10">
-          {live?.phase === "LIVE" ? (
-            <p className="text-[15px]">
-              <strong className="text-note">Selling.</strong> Chance it happens{" "}
-              {chance(live.liveAskMicroUsd)}. Sales close {clock(p.depositDeadline)}
-              {now !== null && p.depositDeadline > now
-                ? ` (in ${countdown(p.depositDeadline - now)})`
-                : ""}
-              .
+          <p className="mt-4 text-center text-[22px] font-bold">
+            {selling ? "Scan to pay with your email" : "Not selling right now"}
+          </p>
+          {selling && now !== null ? (
+            <p className="mt-1 text-center text-[15px] text-ink-soft">
+              {countdown(p.depositDeadline - now)} left, {chance(live?.liveAskMicroUsd)} chance
             </p>
-          ) : live?.phase === "PAUSED" ? (
-            <p className="text-[15px]">
-              <strong className="text-sim">Paused</strong>: {pauseText(live.pauseReason)}.
-            </p>
-          ) : (
-            <p className="text-[15px]">
-              <strong>Sales closed.</strong>{" "}
-              {live?.phase === "RESULT_YES"
-                ? "It happened: customers get their money back."
-                : live?.phase === "RESULT_NO"
-                  ? "It didn't happen: the shop keeps the sales."
-                  : "Waiting for the official result."}
-            </p>
-          )}
+          ) : null}
         </div>
       </aside>
 
@@ -157,25 +142,19 @@ function OrderRow({ r, item }: { r: PurchaseReceiptDto; item: string }) {
       ? "bg-stamp-soft text-stamp ring-1 ring-stamp/30"
       : "bg-paper-raised text-ink ring-1 ring-ink/15";
   return (
-    <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl px-5 py-4 ${tone}`}>
-      <span className="font-display text-[34px] leading-none">{orderNumber(r.purchasePda)}</span>
-      <div className="min-w-0 flex-1">
-        <p className="font-display text-[24px] leading-tight">
-          {r.canServe ? "Paid & hedged: serve" : refund ? "Don't serve: refunding" : "Paid: wait"}
-        </p>
-        <p className="text-[13.5px] opacity-85">
-          {r.canServe
-            ? `${item}, ${usd(r.amount)}`
-            : refund
-              ? `No ${item.toLowerCase()}. Payment going back.`
-              : "Covering it now…"}
-        </p>
-      </div>
-      {r.hedge && r.hedge.premium && r.canServe ? (
-        <span className="text-[13px] opacity-90">
-          Cover {usd(r.hedge.premium)} <span className="opacity-80">(simulated hedge)</span>
+    <div
+      className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-1 rounded-2xl px-6 py-5 ${tone}`}
+    >
+      <span className="font-display text-[64px] leading-none">{orderNumber(r.purchasePda)}</span>
+      <span className="text-right">
+        <span className="font-display block text-[40px] leading-none">
+          {r.canServe ? "Serve" : refund ? "Don't serve" : "Wait"}
         </span>
-      ) : null}
+        <span className="text-[15px] opacity-85">
+          {r.canServe ? "Paid & hedged" : refund ? "Payment going back" : "Covering it now…"}
+          {r.canServe ? `, ${item.toLowerCase()}` : ""}
+        </span>
+      </span>
     </div>
   );
 }

@@ -7,9 +7,8 @@ import { publicConfig } from "@/lib/config";
 type Variant = "primary" | "secondary" | "ghost" | "note";
 
 const VARIANTS: Record<Variant, string> = {
-  primary:
-    "bg-ink text-paper-raised hover:bg-[#21392c] active:translate-y-px disabled:bg-ink-faint disabled:text-paper",
-  note: "bg-note text-paper-raised hover:bg-[#175c3b] active:translate-y-px disabled:bg-ink-faint",
+  primary: "bg-ink text-paper-raised hover:bg-[#21392c] active:translate-y-px disabled:opacity-40",
+  note: "bg-note text-paper-raised hover:bg-[#175c3b] active:translate-y-px disabled:opacity-40",
   secondary:
     "bg-paper-raised text-ink ring-1 ring-ink/25 hover:ring-ink/60 active:translate-y-px disabled:text-ink-faint",
   ghost: "text-ink hover:bg-ink/5 disabled:text-ink-faint",
@@ -249,9 +248,7 @@ export function Stat({
         {label}
         {sim ? <SimTag /> : null}
       </div>
-      <div className="font-wide mt-1 text-[26px] leading-tight font-bold tracking-[-0.01em]">
-        {value}
-      </div>
+      <div className="font-display mt-1.5 text-[40px] leading-none">{value}</div>
       {sub ? <div className="mt-0.5 text-[13px] text-ink-soft">{sub}</div> : null}
     </div>
   );

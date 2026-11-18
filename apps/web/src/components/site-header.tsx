@@ -11,7 +11,7 @@ const LINKS: [string, string, Section][] = [
   ["/merchant", "For shops", "merchant"],
 ];
 
-export function SiteHeader({ active }: { active?: Section }) {
+export function SiteHeader({ active, kiosk }: { active?: Section; kiosk?: boolean }) {
   const nav = (href: string, label: string, key: Section) => (
     <Link
       key={key}
@@ -32,7 +32,7 @@ export function SiteHeader({ active }: { active?: Section }) {
           <Seal seed="hedged" size={34} />
           <span className="font-display text-[22px] tracking-[-0.03em]">Hedged</span>
         </Link>
-        <div className="flex items-center gap-1 md:gap-2">
+        <div className={`flex items-center gap-1 md:gap-2 ${kiosk ? "hidden" : ""}`}>
           <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
             {LINKS.map(([h, l, k]) => nav(h, l, k))}
           </nav>
@@ -41,7 +41,7 @@ export function SiteHeader({ active }: { active?: Section }) {
       </div>
       <nav
         aria-label="Main"
-        className="mx-auto -mt-2 flex max-w-[1240px] gap-1 overflow-x-auto px-3 pb-2 md:hidden"
+        className={`mx-auto -mt-2 flex max-w-[1240px] gap-1 overflow-x-auto px-3 pb-2 md:hidden ${kiosk ? "hidden" : ""}`}
       >
         {LINKS.map(([h, l, k]) => nav(h, l, k))}
       </nav>

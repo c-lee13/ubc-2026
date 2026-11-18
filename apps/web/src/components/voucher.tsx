@@ -22,6 +22,8 @@ export interface VoucherProps {
   stamp?: { text: string; tone: StampTone } | null;
   /** Tilt for the hero presentation. */
   tilt?: boolean;
+  /** On phones, keep the short landscape layout (laid out at 125% and scaled to 80%) instead of portrait. */
+  compact?: boolean;
   className?: string;
 }
 
@@ -48,7 +50,7 @@ export function Voucher(props: VoucherProps) {
 
   return (
     <figure
-      className={`@container w-full ${props.tilt ? "md:-rotate-[2.5deg]" : ""} ${props.className ?? ""}`}
+      className={`@container ${props.compact ? "w-full max-sm:mb-[-12.5%] max-sm:w-[125%] max-sm:origin-top-left max-sm:scale-[0.8]" : "w-full"} ${props.tilt ? "md:-rotate-[2.5deg]" : ""} ${props.className ?? ""}`}
       aria-label={`Promo voucher: your ${dollars} back if ${props.condition}`}
     >
       <div className="relative aspect-[4/5] overflow-hidden rounded-[18px] bg-paper-raised text-ink shadow-[0_1px_0_rgb(255_255_255/0.9)_inset,0_28px_60px_-28px_rgb(20_38_29/0.55),0_2px_6px_-2px_rgb(20_38_29/0.25)] @min-[420px]:aspect-[2/1]">

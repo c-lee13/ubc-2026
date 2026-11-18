@@ -365,15 +365,6 @@ export function Composer({ onPublished }: { onPublished: () => void }) {
                 maxLength={60}
               />
             </Field>
-            <Field label="Refund if" htmlFor="cond" hint="Customers read this on the voucher.">
-              <input
-                id="cond"
-                className={inputClass}
-                value={condition}
-                onChange={(e) => setCondition(e.target.value)}
-                maxLength={120}
-              />
-            </Field>
             <Field label="Price and refund" htmlFor="price" hint="Customers pay in dollars.">
               <Money id="price" value={price} onChange={setPrice} />
             </Field>
@@ -701,41 +692,44 @@ function WindowList({
         <span className="text-right">On sale</span>
       </div>
       <ul role="radiogroup" aria-label="SOL windows">
-        {windows.slice(0, 7).map((w) => {
-          const use = now === null ? { ok: false } : windowUsable(w, now);
-          const isSel = selected === w.marketId;
-          return (
-            <li key={w.marketId}>
-              <button
-                role="radio"
-                aria-checked={isSel}
-                disabled={!use.ok}
-                onClick={() => onPick(w)}
-                className={`grid w-full grid-cols-2 items-center gap-x-3 gap-y-0.5 border-b border-ink/5 px-4 py-3 text-left text-[14.5px] last:border-b-0 sm:grid-cols-[1.3fr_1.3fr_0.7fr_0.8fr] ${isSel ? "bg-note-soft/70 shadow-[inset_3px_0_0_var(--color-note)]" : use.ok ? "hover:bg-paper-deep/60" : "cursor-not-allowed text-ink-faint"}`}
-              >
-                <span className="font-semibold">
-                  {clock(w.opensAt)} to {clock(w.expiresAt)}
-                </span>
-                <span className="max-sm:text-right">
-                  {clock(w.recommendedDepositDeadline)}{" "}
-                  {now !== null && w.recommendedDepositDeadline > now ? (
-                    <span className="text-ink-soft">
-                      (in {countdown(w.recommendedDepositDeadline - now)})
-                    </span>
-                  ) : (
-                    <span className="text-ink-faint">(closed)</span>
-                  )}
-                </span>
-                <span className="font-semibold sm:text-right">
-                  {w.bestAskMicroUsd ? cents(w.bestAskMicroUsd) : "–"}
-                </span>
-                <span className="text-ink-soft max-sm:text-right sm:text-right">
-                  {use.ok ? `${Number(w.askDepthContracts).toLocaleString()} contracts` : use.why}
-                </span>
-              </button>
-            </li>
-          );
-        })}
+        {windows
+          .filter((w) => now === null || windowUsable(w, now).ok)
+          .slice(0, 6)
+          .map((w) => {
+            const use = now === null ? { ok: false } : windowUsable(w, now);
+            const isSel = selected === w.marketId;
+            return (
+              <li key={w.marketId}>
+                <button
+                  role="radio"
+                  aria-checked={isSel}
+                  disabled={!use.ok}
+                  onClick={() => onPick(w)}
+                  className={`grid w-full grid-cols-2 items-center gap-x-3 gap-y-0.5 border-b border-ink/5 px-4 py-3 text-left text-[14.5px] last:border-b-0 sm:grid-cols-[1.3fr_1.3fr_0.7fr_0.8fr] ${isSel ? "bg-note-soft/70 shadow-[inset_3px_0_0_var(--color-note)]" : use.ok ? "hover:bg-paper-deep/60" : "cursor-not-allowed text-ink-faint"}`}
+                >
+                  <span className="font-semibold">
+                    {clock(w.opensAt)} to {clock(w.expiresAt)}
+                  </span>
+                  <span className="max-sm:text-right">
+                    {clock(w.recommendedDepositDeadline)}{" "}
+                    {now !== null && w.recommendedDepositDeadline > now ? (
+                      <span className="text-ink-soft">
+                        (in {countdown(w.recommendedDepositDeadline - now)})
+                      </span>
+                    ) : (
+                      <span className="text-ink-faint">(closed)</span>
+                    )}
+                  </span>
+                  <span className="font-semibold sm:text-right">
+                    {w.bestAskMicroUsd ? cents(w.bestAskMicroUsd) : "–"}
+                  </span>
+                  <span className="text-ink-soft max-sm:text-right sm:text-right">
+                    {use.ok ? `${Number(w.askDepthContracts).toLocaleString()} contracts` : use.why}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
       </ul>
     </div>
   );
@@ -829,10 +823,6 @@ function LiveQuote({
     <section className="rounded-xl bg-paper-raised ring-1 ring-ink/15">
       <header className="flex items-center justify-between border-b border-ink/10 px-4 py-2">
         <h3 className="text-[14px] font-semibold">Live price on Gemini</h3>
-        <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-note">
-          <span className="animate-pulse-dot h-1.5 w-1.5 rounded-full bg-note" aria-hidden />
-          Real market data
-        </span>
       </header>
       <div className="px-4 py-3">
         {!marketReady ? (
@@ -899,7 +889,15 @@ function DeadlineLine({
         {checking && ok === null ? (
           <Spinner />
         ) : ok ? (
-          "Deadline OK"
+          <svg
+            viewBox="0 0 12 12"
+            className="h-4 w-4"
+            role="img"
+            aria-label="Deadline check passed"
+          >
+            <title>Deadline check passed</title>
+            <path d="M2.5 6.2 5 8.6l4.5-5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          </svg>
         ) : ok === false ? (
           "Deadline not allowed"
         ) : null}

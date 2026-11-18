@@ -75,18 +75,19 @@ export function Receipt({
       className="overflow-hidden rounded-2xl bg-paper-raised ring-1 ring-ink/10"
       aria-live="polite"
     >
-      <header className={`px-5 py-4 sm:px-6 ${headerTone(r)}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[13px] opacity-85">{headerKicker(r)}</p>
-            <p className="font-display text-[26px] leading-tight">{headerText(r, notYet)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[12px] opacity-80">Order</p>
-            <p className="font-display text-[26px] leading-tight">{orderNumber(purchaseKey)}</p>
-          </div>
+      <header className={`px-5 py-5 sm:px-6 ${headerTone(r)}`}>
+        {r && REFUND_STEPS.has(r.step) ? (
+          <p className="text-[14px] font-bold">Don&apos;t serve this order</p>
+        ) : null}
+        <div className="flex flex-wrap items-end justify-between gap-x-4">
+          <p className="font-display text-[30px] leading-tight">{headerText(r, notYet)}</p>
+          <p className="font-display text-[64px] leading-none" title="Order number">
+            {orderNumber(purchaseKey)}
+          </p>
         </div>
-        <p className="mt-1 text-[14px] opacity-90">{headerDetail(r, promo.itemName)}</p>
+        {r && (r.step === "REFUNDING" || r.step === "REFUND_READY") ? (
+          <p className="mt-1 text-[14px] opacity-90">Your payment is on its way back.</p>
+        ) : null}
       </header>
 
       <ol className="px-5 py-5 sm:px-6">
@@ -102,6 +103,15 @@ export function Receipt({
               ? "Not covered, so your money comes back"
               : "The shop covers your refund"
           }
+          tag={
+            r?.hedge?.premium && r.hedge.status !== "FAILED" && r.hedge.status !== "VOIDED" ? (
+              <span
+                title={`${r.hedge.contracts} YES contracts at ${cents(r.hedge.avgFillPriceMicroUsd)} = ${usd(r.hedge.premium)}. Simulated hedge priced from Gemini's live order book; no order placed.`}
+              >
+                <SimTag />
+              </span>
+            ) : null
+          }
           last={false}
         >
           {v.covered === "doing" ? (
@@ -116,20 +126,6 @@ export function Receipt({
               {r?.hedge?.failureReason ? `${capitalize(failureText(r.hedge.failureReason))}. ` : ""}
               Your full {dollars} comes back.
             </p>
-          ) : null}
-          {r?.hedge &&
-          r.hedge.premium &&
-          r.hedge.status !== "FAILED" &&
-          r.hedge.status !== "VOIDED" ? (
-            <div className="bg-hatch-soft mt-2 rounded-lg px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-semibold text-ink">
-                  {r.hedge.contracts} YES contracts at {cents(r.hedge.avgFillPriceMicroUsd)} ={" "}
-                  {usd(r.hedge.premium)}
-                </p>
-                <SimTag />
-              </div>
-            </div>
           ) : null}
         </TimelineStep>
 
@@ -175,9 +171,6 @@ export function Receipt({
       <footer className="space-y-2 border-t border-ink/10 px-5 py-3 text-[12.5px] text-ink-soft sm:px-6">
         {receipt.error && !notYet ? <p>{describe(receipt.error).title}: retrying.</p> : null}
         <div className="flex flex-wrap items-center gap-3">
-          <ButtonLink size="sm" variant="ghost" href={`/counter/${promo.id}`}>
-            Counter screen
-          </ButtonLink>
           <ButtonLink size="sm" variant="ghost" href="/me">
             My promos
           </ButtonLink>
@@ -201,7 +194,7 @@ function Proof({ r }: { r: PurchaseReceiptDto }) {
   return (
     <details>
       <summary
-        className="cursor-pointer font-semibold text-ink-soft"
+        className="cursor-pointer font-semibold text-chain"
         title={`Escrow state ${r.onChainState}, server status ${r.status}${r.hedge ? `, simulated hedge fingerprint ${r.hedge.fingerprint}` : ""}`}
       >
         Proof on Arc
@@ -271,12 +264,6 @@ function headerTone(r: PurchaseReceiptDto | null): string {
   return "bg-paper-deep text-ink";
 }
 
-function headerKicker(r: PurchaseReceiptDto | null): string {
-  return r && REFUND_STEPS.has(r.step)
-    ? "Show the barista: don't serve"
-    : "Show this to the barista";
-}
-
 function headerText(r: PurchaseReceiptDto | null, notYet: boolean): string {
   if (!r) return notYet ? "Confirming…" : "Paid";
   switch (r.step) {
@@ -298,16 +285,6 @@ function headerText(r: PurchaseReceiptDto | null, notYet: boolean): string {
   }
 }
 
-function headerDetail(r: PurchaseReceiptDto | null, item: string): string {
-  if (!r) return "Waiting for your payment to land.";
-  if (r.step === "REFUNDING" || r.step === "REFUND_READY") {
-    return `The shop couldn't cover this one. Your payment is being returned; no ${item.toLowerCase()} for this order.`;
-  }
-  if (r.step === "REFUNDED") return "Your payment is back in your balance.";
-  if (r.canServe) return `Paid and covered: hand over the ${item.toLowerCase()}.`;
-  return "Not covered yet: wait a moment before serving.";
-}
-
 function resultTitle(state: StepState, outcome: "YES" | "NO" | null): string {
   if (state === "skipped") return "The result doesn't matter for this order";
   if (outcome === "YES") return "It happened";
@@ -316,7 +293,7 @@ function resultTitle(state: StepState, outcome: "YES" | "NO" | null): string {
 }
 
 function moneyTitle(r: PurchaseReceiptDto | null, dollars: string): string {
-  if (!r) return "Money goes where the result says";
+  if (!r) return "$5 back to you, or the shop keeps it";
   const s = r.onChainState;
   if (s === "Refunded") return `Refunded ${dollars}`;
   if (s === "ClaimedByCustomer") return `${dollars} back to you`;
@@ -325,26 +302,28 @@ function moneyTitle(r: PurchaseReceiptDto | null, dollars: string): string {
   if (r.promotion.resolvedOutcome === "NO" || s === "ClaimedByMerchant") {
     return "The shop keeps the payment";
   }
-  return "Money goes where the result says";
+  return `${dollars} back to you, or the shop keeps it`;
 }
 
 function TimelineStep({
   n,
   state,
   title,
+  tag,
   last,
   children,
 }: {
   n: number;
   state: StepState;
   title: string;
+  tag?: ReactNode;
   last: boolean;
   children?: ReactNode;
 }) {
   const dot = {
     todo: "bg-paper-raised text-ink-faint ring-1 ring-ink/20",
     skipped: "bg-paper-raised text-ink-faint ring-1 ring-ink/15",
-    doing: "bg-chain text-paper-raised",
+    doing: "bg-note-soft text-note ring-1 ring-note/40",
     done: "bg-note text-paper-raised",
     failed: "bg-stamp text-paper-raised",
   }[state];
@@ -371,7 +350,9 @@ function TimelineStep({
         )}
       </span>
       <div className={`min-w-0 pt-1 text-[14.5px] ${muted ? "text-ink-faint" : "text-ink-soft"}`}>
-        <p className={`text-[16px] font-bold ${muted ? "text-ink-faint" : "text-ink"}`}>{title}</p>
+        <p className={`text-[16px] font-bold ${muted ? "text-ink-faint" : "text-ink"}`}>
+          {title} {tag}
+        </p>
         {!muted ? <div className="mt-1">{children}</div> : null}
       </div>
     </li>

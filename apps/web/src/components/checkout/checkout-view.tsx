@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { ApiError, pauseText, type CheckoutStatusDto, type PromotionDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { describe, type Problem } from "@/lib/errors";
@@ -92,8 +92,8 @@ export function CheckoutView({
   const fine = conditionFinePrint(p.geminiMarketId);
 
   return (
-    <div className="grid gap-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-x-14">
-      <div className="min-w-0">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-x-14">
+      <div className="min-w-0 overflow-hidden lg:overflow-visible">
         <Voucher
           seed={p.promoPda ?? p.id}
           shopName={p.shop.name}
@@ -104,10 +104,11 @@ export function CheckoutView({
           serial={p.promoPda}
           marketId={p.geminiMarketId}
           stamp={purchase ? stamp : null}
+          compact
         />
       </div>
 
-      <div className="min-w-0 space-y-4">
+      <div className={`min-w-0 space-y-4 ${purchase ? "max-lg:order-first" : ""}`}>
         {promo.error ? (
           <Notice tone="warn" title={describe(promo.error).title}>
             {describe(promo.error).detail}
@@ -136,7 +137,7 @@ type PayStep = "approve" | "pay" | "confirm";
 
 function PayPanel({
   promo,
-  condition,
+  condition: _condition,
   fine,
   now,
   onPurchased,
@@ -257,40 +258,26 @@ function PayPanel({
     { key: "pay", label: `Pay ${usd(promo.offerAmount)}`, state: steps.pay ?? "todo" },
   ];
 
+  const left = now === null ? null : promo.depositDeadline - now;
   return (
     <section className="rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10 sm:p-6">
-      <div className="flex items-end justify-between gap-3">
-        <h2 className="font-wide text-[22px] leading-tight font-bold">
-          {promo.itemName}
-          <span className="block text-[15px] font-semibold text-ink-soft">{promo.shop.name}</span>
-        </h2>
-        {live?.liveAskMicroUsd ? (
-          <p className="text-right" title="From Gemini's live market price">
-            <span className="font-display block text-[40px] leading-none text-note">
-              {chance(live.liveAskMicroUsd)}
-            </span>
-            <span className="text-[12.5px] font-semibold text-ink-soft">chance it happens</span>
-          </p>
-        ) : null}
+      <div className="grid grid-cols-2 gap-4">
+        <p title="From Gemini's live market price">
+          <span className="font-display block text-[44px] leading-none text-note">
+            {live?.liveAskMicroUsd ? chance(live.liveAskMicroUsd) : "–"}
+          </span>
+          <span className="text-[13px] font-semibold text-ink-soft">chance it&apos;s free</span>
+        </p>
+        <p
+          className="text-right"
+          title={`${fine ? `${fine} ` : ""}Sales close at ${clock(promo.depositDeadline)}.`}
+        >
+          <span className="font-display block text-[44px] leading-none">
+            {left !== null && left > 0 ? countdown(left) : "0:00"}
+          </span>
+          <span className="text-[13px] font-semibold text-ink-soft">left to buy</span>
+        </p>
       </div>
-
-      <dl className="mt-5 space-y-2.5 border-t border-ink/10 pt-4 text-[15px]">
-        <Row k="You pay now" v={usd(promo.offerAmount)} />
-        <Row
-          title={fine ?? undefined}
-          k={`If ${condition}`}
-          v={<span className="font-semibold text-note">{usd(promo.offerAmount)} back to you</span>}
-        />
-        <Row k="If not" v={<span className="text-ink-soft">The shop keeps it</span>} />
-        <Row
-          k="Sales close"
-          v={
-            now !== null && promo.depositDeadline > now
-              ? `${clock(promo.depositDeadline)} (in ${countdown(promo.depositDeadline - now)})`
-              : clock(promo.depositDeadline)
-          }
-        />
-      </dl>
 
       <div className="mt-5 space-y-3">
         {blocker ? (
@@ -300,23 +287,11 @@ function PayPanel({
         ) : null}
 
         {!ready ? (
-          <div className="rounded-xl bg-paper p-4">
-            <LoginCard title="Pay with your email" />
-          </div>
+          <LoginCard compact cta="Continue with email" />
         ) : (
           <>
-            <div className="flex items-center justify-between rounded-lg bg-paper px-3.5 py-2.5 text-[14px]">
-              <span className="text-ink-soft">Your balance</span>
-              {s ? (
-                <strong className="font-wide text-[17px]">{usd(s.usdcBalance)}</strong>
-              ) : status.loading ? (
-                <Spinner />
-              ) : (
-                <span>{usd(w.wallet!.usdcBalance)}</span>
-              )}
-            </div>
             {short && !blocker ? (
-              <Notice tone="warn" title="Add dollars to pay">
+              <Notice tone="warn" title={`Balance ${usd(s!.usdcBalance)}`}>
                 <div className="mt-1">
                   <AddUsdc compact onAdded={status.refresh} />
                 </div>
@@ -324,17 +299,17 @@ function PayPanel({
             ) : null}
             <Button
               size="lg"
-              className="w-full"
+              className="h-16 w-full text-[19px]"
               onClick={pay}
               busy={busy}
               disabled={Boolean(blocker || short || !s)}
               title={
                 s?.needsApproval
                   ? "First payment: approve once to allow payments, then approve the $5."
-                  : undefined
+                  : `Balance ${usd(s?.usdcBalance ?? w.wallet!.usdcBalance)}`
               }
             >
-              Pay {usd(promo.offerAmount)}
+              Pay {usd(promo.offerAmount)} for a {promo.itemName.toLowerCase()}
             </Button>
             {busy || steps.pay ? <Progress steps={progress} /> : null}
           </>
@@ -347,14 +322,5 @@ function PayPanel({
         ) : null}
       </div>
     </section>
-  );
-}
-
-function Row({ k, v, title }: { k: ReactNode; v: ReactNode; title?: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4" title={title}>
-      <dt className="text-ink-soft">{k}</dt>
-      <dd className="text-right font-semibold">{v}</dd>
-    </div>
   );
 }

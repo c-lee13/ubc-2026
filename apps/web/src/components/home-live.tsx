@@ -1,7 +1,6 @@
 "use client";
 
 import { DEMO_PURCHASE_AMOUNT } from "@hedged/shared";
-import type { ReactNode } from "react";
 import { api } from "@/lib/client";
 import { cents, clock, conditionText, usd } from "@/lib/format";
 import { usePoll } from "@/lib/hooks";
@@ -57,7 +56,7 @@ export function HomeVoucher() {
   );
 }
 
-/** Live odds of the next SOL window as three numbers: price, cost to cover, what the shop keeps. */
+/** Live odds of the next SOL window as one line: sale minus cover equals what the shop keeps. */
 export function HomeNumbers() {
   const windows = usePoll(() => api.windows("SOL", 5, 12), 20_000);
   const next = windows.data?.windows.find(
@@ -67,23 +66,36 @@ export function HomeNumbers() {
   const cost = (5_000_000n * BigInt(next.bestAskMicroUsd)) / 1_000_000n;
   return (
     <div
-      className="grid grid-cols-1 gap-6 sm:grid-cols-3"
-      title={`Gemini's live price for the SOL window ending ${clock(next.expiresAt)}`}
+      title={`Gemini's live price for the SOL window ending ${clock(next.expiresAt)}: ${cents(next.bestAskMicroUsd)} per $1 contract.`}
     >
-      <Figure big={cents(next.bestAskMicroUsd)} label="Live price of a $1 YES contract" />
-      <Figure big={usd(cost)} label="Cost to cover a $5 sale" tag={<SimTag />} />
-      <Figure big={usd(5_000_000n - cost)} label="The shop keeps, either way" tag={<SimTag />} />
+      <p className="font-display flex flex-wrap items-baseline gap-x-4 gap-y-2 text-[44px] leading-none sm:text-[64px]">
+        <Term big="$5" label="sale" />
+        <span className="text-ink-faint">−</span>
+        <Term big={usd(cost).replace(/\.00$/, "")} label="cover" sim />
+        <span className="text-ink-faint">=</span>
+        <Term big={usd(5_000_000n - cost).replace(/\.00$/, "")} label="kept, either way" sim note />
+      </p>
     </div>
   );
 }
 
-function Figure({ big, label, tag }: { big: string; label: string; tag?: ReactNode }) {
+function Term({
+  big,
+  label,
+  sim,
+  note,
+}: {
+  big: string;
+  label: string;
+  sim?: boolean;
+  note?: boolean;
+}) {
   return (
-    <div>
-      <p className="font-display text-[52px] leading-none sm:text-[64px]">{big}</p>
-      <p className="mt-2 flex flex-wrap items-baseline gap-x-2 text-[15px] text-ink-soft">
-        {label} {tag}
-      </p>
-    </div>
+    <span className="inline-flex flex-col">
+      <span className={note ? "text-note" : undefined}>{big}</span>
+      <span className="mt-2 flex items-baseline gap-1.5 text-[14px] font-semibold tracking-normal text-ink-soft [font-stretch:100%] [font-variation-settings:normal]">
+        {label} {sim ? <SimTag /> : null}
+      </span>
+    </span>
   );
 }

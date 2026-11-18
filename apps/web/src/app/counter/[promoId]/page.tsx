@@ -9,7 +9,7 @@ export default async function CounterPage({ params }: { params: Promise<{ promoI
   const { promoId } = await params;
   return (
     <>
-      <SiteHeader active="merchant" />
+      <SiteHeader kiosk />
       <main className="mx-auto max-w-[1240px] px-5 pt-4 pb-20 md:px-8 md:pt-8">
         <CounterView promoId={decodeURIComponent(promoId)} />
       </main>

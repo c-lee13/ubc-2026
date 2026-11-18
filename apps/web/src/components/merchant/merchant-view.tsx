@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useWallet } from "@/lib/wallet/session";
 import { shortAddr } from "@/lib/format";
 import { LoginCard } from "../login-card";
-import { Notice } from "../ui";
 import { Composer } from "./composer";
 import { Ledger } from "./ledger";
 
@@ -35,9 +34,7 @@ export function MerchantView({ viewAs }: { viewAs: string | null }) {
           </p>
         ) : null}
       </div>
-      {readOnly ? (
-        <Notice title="Read-only">Log in as this shop to publish or collect.</Notice>
-      ) : null}
+
       {shown ? (
         <Ledger merchant={shown} canAct={!readOnly && Boolean(mine)} refreshKey={refreshKey} />
       ) : (

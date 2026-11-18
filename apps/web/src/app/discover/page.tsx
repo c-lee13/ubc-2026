@@ -9,10 +9,8 @@ export default function DiscoverPage() {
     <>
       <SiteHeader active="discover" />
       <main className="mx-auto max-w-[1240px] px-5 pt-4 pb-20 md:px-8 md:pt-8">
-        <h1 className="font-display text-[34px] md:text-[44px]">Free if it happens</h1>
-        <p className="mt-2 mb-8 text-[18px] text-ink-soft">
-          Pay with your email. Free if it happens.
-        </p>
+        <h1 className="mb-8 font-display text-[34px] md:text-[44px]">Free if it happens</h1>
+
         <DiscoverView />
       </main>
     </>

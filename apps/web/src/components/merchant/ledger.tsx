@@ -108,6 +108,11 @@ export function Ledger({
         (PHASE_ORDER[b.live?.phase ?? "RESULT_YES"] ?? 9) || b.depositDeadline - a.depositDeadline,
   );
   const totals = sumStats(active);
+  // Closed promos that never sold anything collapse into one line.
+  const isQuiet = (p: Promo) =>
+    p.stats.purchases === 0 && p.live?.phase !== "LIVE" && p.live?.phase !== "PAUSED";
+  const shown = sorted.filter((p) => !isQuiet(p));
+  const quiet = sorted.filter(isQuiet);
   const known = Object.values(lists.data ?? {}).filter((l): l is PurchaseList => l !== null);
   const escrowHeld = known
     .flatMap((l) => l.rows)
@@ -166,15 +171,7 @@ export function Ledger({
         <EmptyLedger>No live promos. Publish one below.</EmptyLedger>
       ) : (
         <div className="overflow-hidden rounded-2xl bg-paper-raised ring-1 ring-ink/10">
-          <div className="hidden grid-cols-[minmax(0,2.1fr)_minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.3fr)] gap-4 border-b border-ink/10 px-5 py-2.5 text-[12.5px] text-ink-soft xl:grid">
-            <span>Promo</span>
-            <span>Status</span>
-            <span>Sales</span>
-            <span>In escrow</span>
-            <span>Cost so far</span>
-            <span>You keep</span>
-          </div>
-          {sorted.map((p) => (
+          {shown.map((p) => (
             <PromoRow
               key={p.id}
               promo={p}
@@ -186,6 +183,11 @@ export function Ledger({
               }}
             />
           ))}
+          {quiet.length ? (
+            <p className="border-t border-ink/10 px-5 py-3 text-[14px] text-ink-soft">
+              {quiet.length} closed, no sales
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -278,96 +280,78 @@ function PromoRow({
     }
   }
 
+  const keepSame = promo.stats.ifYes === promo.stats.ifNo;
   return (
     <div className="border-b border-ink/10 last:border-b-0">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-5 py-4 xl:grid-cols-[minmax(0,2.1fr)_minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.3fr)] xl:items-center">
-        <div className="col-span-2 flex min-w-0 items-center gap-3 xl:col-span-1">
-          <Seal
-            seed={promo.promoPda ?? promo.id}
-            size={46}
-            label={usd(promo.offerAmount).replace(/\.00$/, "")}
-          />
-          <div className="min-w-0">
-            <p className="truncate font-semibold">
-              {promo.itemName}, {usd(promo.offerAmount)}
-            </p>
-            <p className="truncate text-[13.5px] text-ink-soft">Back if {cond}</p>
-          </div>
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-3 px-5 py-4 md:grid-cols-[auto_minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,0.6fr)_minmax(0,1fr)_auto]">
+        <Seal
+          seed={promo.promoPda ?? promo.id}
+          size={48}
+          label={usd(promo.offerAmount).replace(/\.00$/, "")}
+        />
+        <div className="min-w-0">
+          <p className="truncate text-[17px] font-bold">{promo.itemName}</p>
+          <p className="truncate text-[14px] text-ink-soft">Free if {cond}</p>
         </div>
-
-        <Cell label="Status" wide>
+        <div className="col-span-2 md:col-span-1">
           <PhaseBadge
             promo={promo}
             now={now}
             toCollect={collectable.length}
             collected={rows.filter((r) => r.onChainState === "ClaimedByMerchant").length}
           />
-        </Cell>
-
-        <Cell label="Sales">
-          <p className="font-semibold">{promo.stats.purchases} sold</p>
-          <p className="text-[13px] text-ink-soft">
-            {promo.stats.hedged} covered
-            {promo.stats.refundedOrCancelled ? `, ${promo.stats.refundedOrCancelled} refunded` : ""}
-          </p>
-        </Cell>
-
-        <Cell label="In escrow">
-          <p className="font-semibold">{list ? usd(held) : "–"}</p>
-          <p className="truncate font-mono text-[12px] text-ink-faint" title={promo.promoPda ?? ""}>
-            {shortAddr(promo.promoPda, 6)}
-          </p>
-        </Cell>
-
-        <Cell label="Cost so far">
-          <p className="font-semibold">{usd(promo.stats.premium)}</p>
-          <p className="text-[13px] text-ink-soft">
-            {promo.stats.contracts} contracts
-            {promo.live ? `, budget left ${usd(promo.live.budgetRemaining)}` : ""}
-          </p>
-          <SimTag />
-        </Cell>
-
-        <Cell label="You keep">
-          <p className="text-[13.5px]">
-            If yes <strong>{usd(promo.stats.ifYes)}</strong>
-          </p>
-          <p className="text-[13.5px]">
-            If no <strong>{usd(promo.stats.ifNo)}</strong>
-          </p>
-          <SimTag />
-        </Cell>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 px-5 pb-4">
-        {collectable.length > 0 ? (
-          canAct ? (
-            <Button size="sm" variant="note" busy={collecting} onClick={collect}>
-              Collect {usd(collectAmount)} ({collectable.length})
-            </Button>
-          ) : (
-            <span className="text-[13px] text-ink-soft">
-              {usd(collectAmount)} to collect. Log in as this shop to collect it.
-            </span>
-          )
-        ) : null}
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            void navigator.clipboard?.writeText(link);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
+        </div>
+        <p
+          className="col-span-1 md:col-span-1"
+          title={`${promo.stats.hedged} covered, ${promo.stats.refundedOrCancelled} refunded`}
         >
-          {copied ? "Copied" : "Copy checkout link"}
-        </Button>
-        <ButtonLink size="sm" variant="ghost" href={`/checkout/${promo.id}`}>
-          Open checkout
-        </ButtonLink>
-        <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          {open ? "Hide purchases" : `Purchases (${list ? rows.length : promo.stats.purchases})`}
-        </Button>
+          <span className="font-display block text-[28px] leading-none">
+            {promo.stats.purchases}
+          </span>
+          <span className="text-[13px] text-ink-soft">sold</span>
+        </p>
+        <p
+          title={
+            keepSame
+              ? "Per the simulated hedge, the same whichever way it goes, before the cost of the item."
+              : `If it happens ${usd(promo.stats.ifYes)}. If not ${usd(promo.stats.ifNo)}.`
+          }
+        >
+          <span className="font-display block text-[28px] leading-none">
+            {keepSame ? usd(promo.stats.ifNo) : `${usd(promo.stats.ifNo)}*`}
+          </span>
+          <span className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] text-ink-soft">
+            you keep <SimTag />
+          </span>
+        </p>
+        <div className="col-span-2 flex flex-wrap items-center gap-2 md:col-span-1 md:justify-end">
+          {collectable.length > 0 ? (
+            canAct ? (
+              <Button size="sm" variant="note" busy={collecting} onClick={collect}>
+                Collect {usd(collectAmount)}
+              </Button>
+            ) : (
+              <span className="text-[13px] text-ink-soft" title="Log in as this shop to collect">
+                {usd(collectAmount)} to collect
+              </span>
+            )
+          ) : null}
+          <Button
+            size="sm"
+            variant="secondary"
+            title={link}
+            onClick={() => {
+              void navigator.clipboard?.writeText(link);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+          >
+            {copied ? "Copied" : "Copy link"}
+          </Button>
+          <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            {open ? "Less" : "More"}
+          </Button>
+        </div>
       </div>
 
       {problem ? (
@@ -379,23 +363,44 @@ function PromoRow({
       ) : null}
       {collected ? (
         <div className="px-5 pb-4">
-          <Notice tone="ok" title="Collected">
-            The covered sales are on their way to your wallet.
-          </Notice>
+          <Notice tone="ok" title="Collected" />
         </div>
       ) : null}
 
-      {open ? <Purchases list={list} /> : null}
+      {open ? (
+        <div className="border-t border-ink/10 bg-paper/60">
+          <div className="grid grid-cols-2 gap-4 px-5 py-4 md:grid-cols-4">
+            <Mini label="In escrow" value={list ? usd(held) : "–"} />
+            <Mini label="Cost so far" value={usd(promo.stats.premium)} sim />
+            <Mini
+              label="Budget left"
+              value={promo.live ? usd(promo.live.budgetRemaining) : "–"}
+              sim
+            />
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
+              <ButtonLink size="sm" variant="ghost" href={`/counter/${promo.id}`}>
+                Counter screen
+              </ButtonLink>
+              <ButtonLink size="sm" variant="ghost" href={`/checkout/${promo.id}`}>
+                Checkout
+              </ButtonLink>
+            </div>
+          </div>
+          <Purchases list={list} />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function Cell({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
+function Mini({ label, value, sim }: { label: string; value: string; sim?: boolean }) {
   return (
-    <div className={`min-w-0 ${wide ? "col-span-2 xl:col-span-1" : ""}`}>
-      <p className="mb-0.5 text-[12px] text-ink-faint xl:hidden">{label}</p>
-      {children}
-    </div>
+    <p>
+      <span className="font-wide block text-[20px] font-bold">{value}</span>
+      <span className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] text-ink-soft">
+        {label} {sim ? <SimTag /> : null}
+      </span>
+    </p>
   );
 }
 
@@ -462,7 +467,7 @@ function PhaseBadge({
     case "RESULT_YES":
       return (
         <div>
-          {badge("text-chain", "It happened")}
+          {badge("text-note", "It happened")}
           <p className="mt-1 text-[13px] text-ink-soft">
             Buyers claim refunds; your cover paid out
           </p>

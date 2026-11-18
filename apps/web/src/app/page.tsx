@@ -5,17 +5,14 @@ import { ChainTag, SimTag } from "@/components/ui";
 const STEPS = [
   {
     title: "Pay with an email code",
-    body: "The $5 waits in escrow, not in the till.",
     tag: <ChainTag>On Arc</ChainTag>,
   },
   {
     title: "The shop covers the refund",
-    body: "YES contracts at the live Gemini price.",
     tag: <SimTag />,
   },
   {
     title: "The result pays out",
-    body: "Your $5 back if it happens. The shop's if not.",
     tag: <ChainTag>On Arc</ChainTag>,
   },
 ];
@@ -35,10 +32,10 @@ export default function Home() {
               <p className="text-[20px] leading-snug text-ink-soft sm:text-[22px]">
                 Free if it happens. The shop covers the refund at live Gemini odds.
               </p>
-              <p className="font-wide mt-7 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[22px] font-bold sm:text-[26px]">
+              <p className="font-wide mt-7 flex items-baseline gap-x-2 text-[19px] font-bold whitespace-nowrap sm:gap-x-3 sm:text-[26px]">
                 <span>sam@email</span>
                 <Arrow />
-                <span className="font-mono tracking-[0.18em]">481027</span>
+                <span className="font-mono sm:tracking-[0.18em]">481027</span>
                 <Arrow />
                 <span className="text-note">$5.00</span>
               </p>
@@ -68,7 +65,6 @@ export default function Home() {
                   </span>
                   <h3 className="text-[18px] font-bold">{s.title}</h3>
                 </div>
-                <p className="mt-2 text-[15px] text-ink-soft">{s.body}</p>
                 <div className="mt-2">{s.tag}</div>
               </li>
             ))}

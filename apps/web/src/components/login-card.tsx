@@ -12,10 +12,13 @@ export function LoginCard({
   title = "Log in with your email",
   lead,
   compact,
+  cta = "Email me a code",
 }: {
   title?: string;
   lead?: string;
   compact?: boolean;
+  /** Button label. */
+  cta?: string;
 }) {
   const w = useWallet();
   const [email, setEmail] = useState("");
@@ -60,14 +63,8 @@ export function LoginCard({
           onChange={(e) => setEmail(e.target.value)}
           disabled={busy}
         />
-        <Button
-          type="submit"
-          size="lg"
-          className="h-12 shrink-0"
-          busy={busy}
-          disabled={!email.trim()}
-        >
-          {busy ? phaseText(w.phase) : "Email me a code"}
+        <Button type="submit" size="lg" className="h-12 shrink-0" busy={busy}>
+          {busy ? phaseText(w.phase) : cta}
         </Button>
       </div>
       {busy ? (

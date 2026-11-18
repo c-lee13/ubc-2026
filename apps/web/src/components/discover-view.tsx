@@ -6,16 +6,27 @@ import { api } from "@/lib/client";
 import { describe } from "@/lib/errors";
 import { chance, clock, conditionText, countdown, usd } from "@/lib/format";
 import { useNowSeconds, usePoll } from "@/lib/hooks";
-import { Notice, Spinner } from "./ui";
-import { Seal } from "./voucher";
+import { ButtonLink, Notice, Spinner } from "./ui";
+import { Seal, Voucher } from "./voucher";
 
-/** Customer Discover: shops with live promos, the chance it happens, one tap to checkout. */
+/** Customer Discover: live promos as vouchers you can buy, then a short list of closed ones. */
 export function DiscoverView() {
   const promos = usePoll(() => api.promotions(), 15_000);
   const now = useNowSeconds();
   const all = promos.data?.promotions ?? [];
   const selling = all.filter((p) => p.live?.phase === "LIVE");
-  const rest = all.filter((p) => p.live?.phase !== "LIVE").slice(0, 4);
+  // One row per shop + item + condition: the newest closed one.
+  const seen = new Set<string>();
+  const closed = all
+    .filter((p) => p.live?.phase !== "LIVE")
+    .sort((a, b) => b.depositDeadline - a.depositDeadline)
+    .filter((p) => {
+      const k = `${p.shop.name}|${p.itemName}|${conditionText(p.outcomeLabel, p.geminiMarketId)}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .slice(0, 5);
 
   if (!promos.data) {
     return promos.error ? (
@@ -24,37 +35,32 @@ export function DiscoverView() {
       </Notice>
     ) : (
       <p className="flex items-center gap-2 py-16 text-ink-soft">
-        <Spinner /> Finding promos near you…
+        <Spinner /> Finding promos…
       </p>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <section aria-labelledby="selling" className="space-y-3">
-        <h2 id="selling" className="text-[15px] font-semibold text-ink-soft">
-          Selling now
-        </h2>
-        {selling.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-ink/25 px-5 py-8 text-center text-ink-soft">
-            Nothing selling right now.
-          </div>
-        ) : (
-          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {selling.map((p) => (
-              <PromoCard key={p.id} p={p} now={now} />
-            ))}
-          </ul>
-        )}
-      </section>
-      {rest.length ? (
-        <section aria-labelledby="later" className="space-y-3">
-          <h2 id="later" className="text-[15px] font-semibold text-ink-soft">
-            Paused or waiting for a result
+    <div className="space-y-10">
+      {selling.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-ink/25 px-5 py-10 text-center text-[18px] text-ink-soft">
+          Nothing selling right now.
+        </div>
+      ) : (
+        <ul className="grid grid-cols-1 gap-8">
+          {selling.map((p) => (
+            <LivePromo key={p.id} p={p} now={now} />
+          ))}
+        </ul>
+      )}
+      {closed.length ? (
+        <section aria-labelledby="closed">
+          <h2 id="closed" className="mb-2 text-[15px] font-bold text-ink-soft">
+            Closed
           </h2>
-          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {rest.map((p) => (
-              <PromoCard key={p.id} p={p} now={now} muted />
+          <ul className="divide-y divide-ink/10 overflow-hidden rounded-2xl bg-paper-raised ring-1 ring-ink/10">
+            {closed.map((p) => (
+              <ClosedPromo key={p.id} p={p} />
             ))}
           </ul>
         </section>
@@ -63,43 +69,77 @@ export function DiscoverView() {
   );
 }
 
-function PromoCard({ p, now, muted }: { p: PromotionDto; now: number | null; muted?: boolean }) {
+function LivePromo({ p, now }: { p: PromotionDto; now: number | null }) {
   const cond = conditionText(p.outcomeLabel, p.geminiMarketId);
   const left = now === null ? null : p.depositDeadline - now;
+  return (
+    <li className="grid grid-cols-1 items-center gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:gap-10">
+      <Link href={`/checkout/${p.id}`} className="block overflow-hidden lg:overflow-visible">
+        <Voucher
+          seed={p.promoPda ?? p.id}
+          shopName={p.shop.name}
+          itemName={p.itemName}
+          amount={p.offerAmount}
+          condition={cond}
+          closesLabel={`Sales close ${clock(p.depositDeadline)}`}
+          serial={p.promoPda}
+          marketId={p.geminiMarketId}
+          stamp={{ text: "SELLING NOW", tone: "note" }}
+          compact
+        />
+      </Link>
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 gap-4">
+          <p title="From Gemini's live market price">
+            <span className="font-display block text-[48px] leading-none text-note">
+              {chance(p.live?.liveAskMicroUsd)}
+            </span>
+            <span className="text-[13px] font-semibold text-ink-soft">chance it&apos;s free</span>
+          </p>
+          <p title={`Sales close at ${clock(p.depositDeadline)}`}>
+            <span className="font-display block text-[48px] leading-none">
+              {left !== null && left > 0 ? countdown(left) : "0:00"}
+            </span>
+            <span className="text-[13px] font-semibold text-ink-soft">left to buy</span>
+          </p>
+        </div>
+        <ButtonLink href={`/checkout/${p.id}`} size="lg" className="h-16 w-full text-[19px]">
+          Buy a {p.itemName.toLowerCase()} for {usd(p.offerAmount).replace(/\.00$/, "")}
+        </ButtonLink>
+      </div>
+    </li>
+  );
+}
+
+function ClosedPromo({ p }: { p: PromotionDto }) {
+  const result =
+    p.live?.phase === "RESULT_YES"
+      ? { text: "FREE", cls: "text-note border-note" }
+      : p.live?.phase === "RESULT_NO"
+        ? { text: "PAID", cls: "text-ink border-ink" }
+        : p.live?.phase === "PAUSED"
+          ? { text: "PAUSED", cls: "text-sim border-sim" }
+          : { text: "WAITING", cls: "text-ink-soft border-ink-soft" };
   return (
     <li>
       <Link
         href={`/checkout/${p.id}`}
-        className={`flex items-center gap-4 rounded-2xl bg-paper-raised p-4 ring-1 ring-ink/10 transition-colors hover:ring-ink/40 ${muted ? "opacity-70" : ""}`}
+        className="flex items-center gap-4 px-4 py-3 hover:bg-paper-deep/50"
       >
-        <Seal seed={p.promoPda ?? p.id} size={56} label={usd(p.offerAmount).replace(/\.00$/, "")} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] text-ink-soft">
-            {p.shop.name}
-            {p.shop.location ? `, ${p.shop.location}` : ""}
-          </p>
-          <p className="font-wide text-[17px] leading-snug font-bold">
-            {p.itemName} {usd(p.offerAmount).replace(/\.00$/, "")}, free if {cond}
-          </p>
-          <p className="mt-0.5 text-[13px] text-ink-soft">
-            {p.live?.phase === "LIVE" && left !== null && left > 0
-              ? `Until ${clock(p.depositDeadline)} (${countdown(left)})`
-              : p.live?.phase === "PAUSED"
-                ? "Paused right now"
-                : "Sales closed"}
-          </p>
-        </div>
-        {p.live?.liveAskMicroUsd ? (
-          <span
-            className="shrink-0 text-right text-note"
-            title="Chance it happens, from Gemini's live price"
-          >
-            <span className="font-display block text-[30px] leading-none">
-              {chance(p.live.liveAskMicroUsd)}
-            </span>
-            <span className="text-[12px] font-semibold">chance</span>
+        <Seal seed={p.promoPda ?? p.id} size={40} label={usd(p.offerAmount).replace(/\.00$/, "")} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-semibold">
+            {p.itemName} at {p.shop.name}
           </span>
-        ) : null}
+          <span className="block truncate text-[13.5px] text-ink-soft">
+            Free if {conditionText(p.outcomeLabel, p.geminiMarketId)}
+          </span>
+        </span>
+        <span
+          className={`font-display shrink-0 -rotate-6 rounded border-2 px-2 py-0.5 text-[14px] tracking-[0.05em] ${result.cls}`}
+        >
+          {result.text}
+        </span>
       </Link>
     </li>
   );
