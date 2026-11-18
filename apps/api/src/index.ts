@@ -1,16 +1,13 @@
-import { createArcGatewayFromEnv } from "@hedged/arc/server";
+import { createArcGatewayFromEnv, type ArcGateway } from "@hedged/arc/server";
 import type { SolanaServerGateway } from "@hedged/shared";
-import {
-  createSolanaGatewayFromEnv,
-  type RealSolanaGateway,
-  type StreamsSignal,
-} from "@hedged/solana/server";
+import { createSolanaGatewayFromEnv, type RealSolanaGateway } from "@hedged/solana/server";
 import { loadConfig } from "./config";
 import { createGeminiAdapter } from "./gemini/adapter";
 import { withGeminiCache } from "./gemini/cached";
 import { createGeminiClient } from "./gemini/client";
 import { FakeSolanaGateway } from "./orchestration/fake-gateway";
 import { createOrchestrator } from "./orchestration/orchestrator";
+import { arcStreamsHandler, solanaStreamsHandler } from "./routes/webhooks";
 import { startWorkers, type RunningWorkers } from "./orchestration/workers";
 import { createDesk } from "./desk/run";
 import { buildServer } from "./server";
@@ -28,6 +25,7 @@ const store: Store = config.supabase
 // real Devnet gateway ("real", built from the SOLANA_* / QUICKNODE_* / RELAYER_* variables), or the
 // Arc testnet escrow ("arc", built from the ARC_* variables; packages/arc/README.md).
 let realGateway: RealSolanaGateway | null = null;
+let arcGateway: ArcGateway | null = null;
 let gateway: SolanaServerGateway | null = null;
 if (config.workers.gateway === "fake") {
   gateway = new FakeSolanaGateway(() => Math.floor(Date.now() / 1000));
@@ -45,15 +43,27 @@ if (config.workers.gateway === "fake") {
   }
   gateway = realGateway;
 } else if (config.workers.gateway === "arc") {
-  gateway = await createArcGatewayFromEnv();
+  try {
+    arcGateway = await createArcGatewayFromEnv(process.env, (msg, extra) =>
+      console.log(JSON.stringify({ level: 30, time: Date.now(), msg: `[arc] ${msg}`, ...extra })),
+    );
+  } catch (err) {
+    // Typical causes: ARC_ESCROW_ADDRESS unset, ARC_RELAYER_KEY_PATH unreadable, RPC not Arc testnet.
+    console.error(`SOLANA_GATEWAY=arc could not start: ${(err as Error).message}`);
+    process.exit(1);
+  }
+  gateway = arcGateway;
 }
+// QuickNode Streams webhook (POST /webhooks/quicknode) for whichever chain is active.
+const token = config.workers.streamsSecurityToken;
 const streams =
-  realGateway && config.workers.streamsSecurityToken
-    ? {
-        securityToken: config.workers.streamsSecurityToken,
-        ingest: (signals: StreamsSignal[]) => realGateway!.ingestStreams(signals),
-      }
-    : null;
+  token && realGateway
+    ? solanaStreamsHandler(token, (s) => realGateway!.ingestStreams(s))
+    : token && arcGateway && process.env.ARC_ESCROW_ADDRESS
+      ? arcStreamsHandler(token, process.env.ARC_ESCROW_ADDRESS, (s) =>
+          arcGateway!.ingestStreams(s),
+        )
+      : null;
 const desk = createDesk({
   store,
   gemini,
@@ -78,7 +88,16 @@ try {
       );
     } else {
       if (config.workers.gateway === "arc") {
-        app.log.info("SOLANA_GATEWAY=arc: workers run against the Arc escrow (@hedged/arc)");
+        app.log.info(
+          {
+            streamsWebhook: Boolean(streams),
+            eventSource: process.env.ARC_EVENT_SOURCE ?? "poll",
+          },
+          "SOLANA_GATEWAY=arc: workers run against the Arc escrow (@hedged/arc)",
+        );
+        if (process.env.ARC_EVENT_SOURCE === "streams" && !streams) {
+          app.log.warn("ARC_EVENT_SOURCE=streams but QUICKNODE_STREAMS_SECURITY_TOKEN is not set");
+        }
       } else {
         app.log.info(
           {
@@ -128,6 +147,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, async () => {
     await workers?.stop();
     await realGateway?.stop();
+    await arcGateway?.stop();
     await app.close();
     process.exit(0);
   });

@@ -5,6 +5,7 @@ import type { GeminiAdapter } from "../gemini/adapter";
 import { checkDepositDeadline } from "../promotions/deadline";
 import { liveState, promoStats, type LiveState } from "../promotions/live-state";
 import { PromotionConflictError, type PromotionRow, type Store } from "../store/types";
+import { canonical, isChainId, isWalletAddress, sameChainString } from "../chain-ids";
 import { sendGeminiError } from "./markets";
 
 export interface PromotionRouteDeps {
@@ -15,7 +16,6 @@ export interface PromotionRouteDeps {
   now?: () => Date;
 }
 
-const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const UINT = /^\d{1,18}$/;
 /** $1,000 in base units: a sanity cap for a single item price. */
 const MAX_OFFER = 1_000_000_000n;
@@ -78,10 +78,11 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
   app.post<{ Params: { id: string }; Body: { promoPda?: unknown } }>(
     "/api/promotions/:id/confirm",
     async (req, reply) => {
-      const promoPda = req.body?.promoPda;
-      if (typeof promoPda !== "string" || !BASE58.test(promoPda)) {
+      const rawPda = req.body?.promoPda;
+      if (!isChainId(rawPda)) {
         return reply.code(400).send({ error: "invalid_promo_pda" });
       }
+      const promoPda = canonical(rawPda);
       const promo = await deps.store.getPromotion(req.params.id);
       if (!promo) return reply.code(404).send({ error: "promotion_not_found" });
       if (promo.status === "ACTIVE" && promo.promoPda === promoPda) {
@@ -92,7 +93,7 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
       const chain = await deps.gateway.getPromoState(promoPda, "finalized");
       if (!chain) return reply.code(409).send({ error: "promo_not_found_on_chain_yet" });
       const mismatches = [
-        chain.merchant !== promo.merchant && "merchant",
+        !sameChainString(chain.merchant, promo.merchant) && "merchant",
         chain.promoNonce !== promo.promoNonce && "promoNonce",
         chain.offerAmount !== promo.offerAmount.toString() && "offerAmount",
         chain.depositDeadline !== promo.depositDeadline && "depositDeadline",
@@ -146,8 +147,10 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
   app.get<{ Params: { pubkey: string } }>(
     "/api/merchants/:pubkey/dashboard",
     async (req, reply) => {
-      const { pubkey } = req.params;
-      if (!BASE58.test(pubkey)) return reply.code(400).send({ error: "invalid_merchant" });
+      const pubkey = canonical(req.params.pubkey);
+      if (!isWalletAddress(req.params.pubkey)) {
+        return reply.code(400).send({ error: "invalid_merchant" });
+      }
       // Profile is null until the merchant's first promo is confirmed on-chain.
       const merchant = await deps.store.getMerchant(pubkey);
       const promos = await deps.store.listPromotions({ merchant: pubkey });
@@ -237,7 +240,7 @@ function parseCreate(
   const uint = (k: string) =>
     typeof b[k] === "string" && UINT.test(b[k] as string) ? BigInt(b[k] as string) : null;
 
-  const merchant = typeof b.merchant === "string" && BASE58.test(b.merchant) ? b.merchant : null;
+  const merchant = isWalletAddress(b.merchant) ? canonical(b.merchant) : null;
   if (!merchant) return bad("merchant");
   const shopName = str("shopName", 1, 80);
   if (!shopName) return bad("shopName");

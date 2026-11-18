@@ -1,8 +1,7 @@
 import type { FastifyInstance } from "fastify";
+import { canonical, isChainId } from "../chain-ids";
 import { hedgeFingerprint } from "../hedging/fingerprint";
 import type { PromotionRow, PurchaseRow, Store } from "../store/types";
-
-const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /**
  * What the customer's receipt and the barista's screen show. Derived only from server state
@@ -72,8 +71,8 @@ function resolved(outcome: "YES" | "NO" | null): {
 export function registerPurchaseRoutes(app: FastifyInstance, deps: { store: Store }): void {
   // Receipt by purchase PDA (the customer's wallet knows it from the deposit transaction).
   app.get<{ Params: { id: string } }>("/api/purchases/:id", async (req, reply) => {
-    const pda = req.params.id;
-    if (!BASE58.test(pda)) return reply.code(400).send({ error: "invalid_purchase_pda" });
+    if (!isChainId(req.params.id)) return reply.code(400).send({ error: "invalid_purchase_pda" });
+    const pda = canonical(req.params.id);
     const p = await deps.store.getPurchaseByPda(pda);
     if (!p) return reply.code(404).send({ error: "purchase_not_found" });
     const promo = await deps.store.getPromotion(p.promotionId);
