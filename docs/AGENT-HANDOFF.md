@@ -14,6 +14,20 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-18 ~04:30 ET · Dev 4 Rachel · branches `arc-backend-fixes` (+ merged PRs #7, #8)
+
+- Merged into `arc`: #7 (REST routes accept Arc `0x` ids, lowercase-stored; `/webhooks/quicknode` serves
+  the Arc Stream; arc startup/shutdown cleanup) and #8 (Circle email-login wallets + Arc checkout:
+  `/api/wallet/*`, `/api/checkout/:promoId/{status,approve,deposit}`; guide `docs/email-wallets.md`).
+- `arc-backend-fixes`: public responses hide each shop's max cost and budget (owner view on the
+  dashboard via the shop's Circle login); 2-cent buy buffer (`PRICE_NEAR_THRESHOLD`);
+  `GET /api/desk/demo` (two-shop netting on a real game, live prices, nothing stored).
+- Done for Dylan: 20 testnet USDC sent to deployer `0x1B26F37e79c16167a8EAc4bc4c2a1bFb93753e92` and
+  relayer `0x118318601ff299f6aAA8839B765d5Ca1bFD2EC83`. Circle key + App ID sent to Dylan by DM.
+- Needs: Dylan: deploy escrow and post `ARC_ESCROW_ADDRESS` here. Zahin: check `frontend-dylan`
+  before building screens. Anyone on the demo backend: `CIRCLE_*` and `ARC_ESCROW_ADDRESS` in `.env`.
+- Tests: api 84, supabase 12, solana 23, arc 11; lint, typecheck, builds. Not run here: forge/anvil.
+
 ### 2026-11-18 ~01:40 ET · Dev 3 Dylan · branch `arc`
 
 - Done: Arc escrow contract + `@hedged/arc` gateway (forge 91/91, anvil e2e 35/35, api workers on Arc

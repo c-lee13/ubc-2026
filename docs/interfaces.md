@@ -260,6 +260,14 @@ and dashboard data is derivable from public chain data and public Gemini prices.
   `POST /api/wallet/init`, `GET /api/wallet`, `GET /api/checkout/:promoId/status`,
   `POST /api/checkout/:promoId/approve`, `POST /api/checkout/:promoId/deposit`, `POST /api/wallet/faucet`.
   Flow and errors: `docs/email-wallets.md`.
+- `GET /api/desk/demo?event=<moneyline ticker>&a=<sales side 1>&b=<sales side 2>&price=<base units>` →
+  what the desk would do for two hypothetical shops on opposite sides of a real game, priced live.
+  Nothing stored; `scenario: "demo"`, `simulated: true`.
+- **Public vs. owner views:** the directory, `GET /api/promotions/:id` and confirm responses omit the
+  shop's `maxYesPriceMicroUsd`, `hedgeBudget` and `live.thresholdBps` / `live.budgetRemaining`. The
+  dashboard includes them only when `X-User-Token` is the merchant's own Circle login (`viewer: "owner"`).
+- **Buy buffer:** `live.canBuy` needs the live price at least 2¢ under the shop's max (a fifth of the
+  max when that is smaller); otherwise `pauseReason: "PRICE_NEAR_THRESHOLD"`.
 - `GET /api/purchases/:purchasePda` → customer receipt / barista screen: off-chain `status` and
   on-chain `onChainState` side by side, `step` (PROCESSING | HEDGED | REFUNDING | REFUND_READY |
   REFUNDED | WAITING_FOR_RESULT | YOU_WON | NOT_THIS_TIME | DONE), `canServe` (hand over the item

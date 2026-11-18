@@ -367,3 +367,20 @@ function circleError(reply: FastifyReply, err: unknown) {
   }
   throw err;
 }
+
+/**
+ * True when the request's Circle login (X-User-Token) owns a wallet whose address is `merchant`.
+ * Used to show a shop its own budget and max cost on the dashboard.
+ */
+export function circleMerchantCheck(circle: CircleClient, blockchain: string) {
+  return async (headers: Record<string, unknown>, merchant: string): Promise<boolean> => {
+    const t = headers["x-user-token"];
+    if (typeof t !== "string" || t.length < 20 || t.length > 4096) return false;
+    const d = await circle.request<{ wallets: CircleWallet[] }>(
+      "GET",
+      `/v1/w3s/wallets?blockchain=${encodeURIComponent(blockchain)}`,
+      { userToken: t },
+    );
+    return (d?.wallets ?? []).some((w) => canonical(w.address) === canonical(merchant));
+  };
+}

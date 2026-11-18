@@ -13,7 +13,22 @@ import { BASE_UNITS_PER_HUNDREDTH, hundredthsToQty, qtyToHundredths } from "../g
  *   RESULT_YES / RESULT_NO  resolved on-chain
  */
 export type PromoPhase = "LIVE" | "PAUSED" | "WAITING_FOR_RESULT" | "RESULT_YES" | "RESULT_NO";
-export type PauseReason = "PRICE_ABOVE_THRESHOLD" | "BUDGET_USED" | "NO_LIVE_PRICE";
+export type PauseReason =
+  | "PRICE_ABOVE_THRESHOLD"
+  /** Within the safety buffer under the threshold: a small move would fail the hedge after payment. */
+  | "PRICE_NEAR_THRESHOLD"
+  | "BUDGET_USED"
+  | "NO_LIVE_PRICE";
+
+/**
+ * Checkout only opens when the live price is a little UNDER the shop's threshold, so a price tick
+ * between "can buy" and the hedge doesn't turn into "paid, then refunded". 2 cents, or a fifth of
+ * the threshold for very low thresholds (a 5% shop gets a 1-cent buffer instead of being blocked).
+ */
+export function buyBuffer(maxYesPriceMicroUsd: bigint): bigint {
+  const fifth = maxYesPriceMicroUsd / 5n;
+  return fifth < 20_000n ? fifth : 20_000n;
+}
 
 export interface LiveState {
   phase: PromoPhase;
@@ -62,6 +77,9 @@ export function liveState(
   });
   if (liveAskMicroUsd === null || costPerSale === null) return pause("NO_LIVE_PRICE");
   if (liveAskMicroUsd > promo.maxYesPriceMicroUsd) return pause("PRICE_ABOVE_THRESHOLD");
+  if (liveAskMicroUsd > promo.maxYesPriceMicroUsd - buyBuffer(promo.maxYesPriceMicroUsd)) {
+    return pause("PRICE_NEAR_THRESHOLD");
+  }
   if (costPerSale > budgetRemaining) return pause("BUDGET_USED");
   return { ...base, phase: "LIVE", pauseReason: null, canBuy: true };
 }
@@ -114,4 +132,13 @@ export function promoStats(purchases: PurchaseRow[], hedges: HedgeRow[]): PromoS
     ifYes: (payoutIfYes - premium).toString(),
     ifNo: (hedgedSales - premium).toString(),
   };
+}
+
+/**
+ * Public view of a live state: drops the shop's threshold and remaining budget, which competitors
+ * should not see. `costPerSale` and the live price stay: they come from public Gemini prices.
+ */
+export function publicLiveState(s: LiveState): Omit<LiveState, "thresholdBps" | "budgetRemaining"> {
+  const { thresholdBps: _t, budgetRemaining: _b, ...rest } = s;
+  return rest;
 }
