@@ -47,7 +47,15 @@ export const isRpcError = (e: unknown) =>
   (e instanceof Error &&
     /fetch failed|ECONNREFUSED|ECONNRESET|socket hang up|network/i.test(e.message));
 
-type RelayerFn = "markHedged" | "cancelUnhedged" | "resolvePromo";
+export type RelayerFn =
+  | "markHedged"
+  | "cancelUnhedged"
+  | "resolvePromo"
+  // v2: the relayer also pushes payouts and submits customers' signed deposits
+  | "settlePurchase"
+  | "settlePurchases"
+  | "settlePromo"
+  | "depositWithAuthorization";
 
 /**
  * Simulate -> send -> receipt -> wait for finality. Program errors surface at simulation, before

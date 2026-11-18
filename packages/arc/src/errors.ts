@@ -33,6 +33,9 @@ export const ESCROW_ERROR_NAMES = [
   "AccountNotFound",
   "Reentrancy",
   "TokenTransferFailed",
+  // v2 (appended)
+  "BatchTooLarge",
+  "PermitFailed",
 ] as const;
 export type EscrowErrorName = (typeof ESCROW_ERROR_NAMES)[number];
 

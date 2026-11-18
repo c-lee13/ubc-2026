@@ -9,4 +9,5 @@ export * from "./errors";
 export * from "./accounts";
 export * from "./codec";
 export * from "./transactions";
+export * from "./checkout";
 export { HEDGED_ESCROW_ABI } from "./abi";
