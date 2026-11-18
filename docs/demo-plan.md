@@ -20,15 +20,16 @@ coffee shop; the live mechanism runs on a Gemini **5-minute SOL Up/Down market**
 | ----------------------- | ------------------------------------------------------------------------------------------ |
 | ~12–15 min before stage | **Promo A**: "free coffee if SOL is up" on a window ending around pitch minute 3. Buy one. |
 | Minute 0–1              | Texas story: Mattress Mack, the coffee shop, cost fixed at odds × refund.                  |
-| Minute 1–2              | **Promo B live**: someone buys; live 50¢ quote → simulated hedge → `Hedged` on Devnet.     |
+| Minute 1–2              | **Promo B live**: someone buys; live 50¢ quote → simulated hedge → `Hedged` on Arc.        |
 | Minute 2                | **Price cap**: Saturday's Texas game at ~92¢ is refused by a 50¢ cap.                      |
-| Minute 3–4              | **Promo A settles**: official Gemini result → `resolve_promo` → refund or merchant claim.  |
+| Minute 3–4              | **Promo A settles**: official Gemini result → resolve on Arc → automatic refund or payout. |
 | Q&A                     | Promo B may settle; bonus only.                                                            |
 | Backup                  | Recorded video of the full flow.                                                           |
 
-## Dependencies
+## Before the demo
 
-- Dev 3: real Devnet `SolanaServerGateway` (until then the backend runs on the fake chain).
-- Dev 1: merchant "use next window" picker (`/api/markets/windows`) and the deadline check before
-  signing `initialize_promo`.
-- Dev 4: `POST /api/promotions` once the create-promo flow is agreed with Dev 1.
+- Backend on escrow v2 with the relayer (`SOLANA_GATEWAY=arc`, v2 `ARC_ESCROW_ADDRESS`); startup log
+  says "one-tap checkout and automatic payouts on".
+- Two demo customer wallets logged in and funded with testnet USDC (`POST /api/wallet/faucet`).
+- Promo A and Promo B published from the shop wallet on windows picked with `/api/markets/windows`.
+- One full purchase → result → payout done earlier the same day, and the backup video recorded.
