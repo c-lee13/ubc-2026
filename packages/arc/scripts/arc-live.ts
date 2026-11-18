@@ -1,6 +1,9 @@
 /**
  * LIVE Arc testnet run of every relayer move against the deployed HedgedEscrow.
  * A fresh merchant + customer are funded from the deployer with small amounts of testnet USDC.
+ * Against a v2 escrow it also checks the v2 moves (skipped with a note on a v1 deployment):
+ * one-signature checkout (customer signs EIP-3009, relayer submits), automatic payouts for
+ * cancel / YES / NO / VOID, and the VOID rule (hedged -> shop, never hedged -> customer).
  *
  *   ARC_ESCROW_ADDRESS=0x... ARC_RELAYER_KEY_PATH=~/.config/arc/ubc-relayer.json \
  *   ARC_FUNDER_KEY_PATH=~/.config/arc/ubc-deployer.json pnpm --filter @hedged/arc exec tsx scripts/arc-live.ts
@@ -25,6 +28,8 @@ import {
   type UnsignedTx,
 } from "../src/transactions";
 import { createArcGatewayFromEnv, ResolutionTooEarlyError } from "../src/server";
+import { isEscrowV2 } from "../src/accounts";
+import { readTokenDomain, receiveAuthorizationTypedData } from "../src/checkout";
 import { loadArcAccount } from "../src/server/keys";
 
 const USDC = "0x3600000000000000000000000000000000000000" as const;
@@ -206,5 +211,122 @@ check(
   "NO: merchant collects",
 );
 
-console.log(`\npromo A ${promoA}\npromo B ${promoB}\n${pass} passed, ${fail} failed`);
+const v2Promos: Hex[] = [];
+if (!(await isEscrowV2(pub as never, escrow))) {
+  console.log("\n[v2] escrow is v1: skipping auto-payout / VOID / one-signature checks");
+} else {
+  console.log("\n[v2] fund the customer with 5 more USDC (no gas needed: the relayer submits)");
+  const h = await fw.sendTransaction({
+    to: customer.address,
+    value: parseEther("5"),
+    account: funder,
+    chain: ARC_TESTNET,
+  });
+  await pub.waitForTransactionReceipt({ hash: h });
+  const domain = await readTokenDomain(pub as never, USDC);
+  check(
+    domain.name === "USDC" && domain.version === "2" && domain.chainId === 5042002,
+    "USDC EIP-712 domain read live",
+    domain,
+  );
+  const deadlineV = BigInt((await now()) + 45);
+  for (const n of [3n, 4n, 5n])
+    await send(
+      merchant,
+      buildInitializePromoTx(escrow, {
+        promoNonce: n,
+        offerAmount: OFFER,
+        depositDeadline: deadlineV,
+        marketId: `LIVE-ARC-V2-${n}`,
+      }),
+    );
+  const [promoC, promoD, promoE] = [3n, 4n, 5n].map((n) => promoIdOf(merchant.address, n)) as [
+    Hex,
+    Hex,
+    Hex,
+  ];
+  v2Promos.push(promoC, promoD, promoE);
+  const signedDeposit = async (promoId: Hex) => {
+    const purchaseIdHex = newPurchaseIdHex();
+    const td = receiveAuthorizationTypedData({
+      domain,
+      escrow,
+      promoId,
+      customer: customer.address,
+      purchaseIdHex,
+      amount: OFFER,
+      validBefore: deadlineV,
+    });
+    const d = {
+      promoId,
+      purchaseIdHex,
+      customer: customer.address,
+      amount: OFFER,
+      validAfter: 0n,
+      validBefore: deadlineV,
+      signature: await customer.signTypedData(td),
+    };
+    return { d, r: await gw.submitAuthorizedDeposit(d) };
+  };
+  const gas0 = await pub.getBalance({ address: customer.address });
+  const c1 = await signedDeposit(promoC); // hedged, then VOID -> shop
+  check(
+    !c1.r.alreadyApplied &&
+      (await gw.getPurchaseState(c1.r.purchasePda, "confirmed"))?.customer.toLowerCase() ===
+        customer.address.toLowerCase(),
+    "depositWithAuthorization live: relayer submits, purchase is the customer's",
+    c1.r,
+  );
+  check(
+    (await gw.submitAuthorizedDeposit(c1.d)).alreadyApplied,
+    "same signature again → alreadyApplied",
+  );
+  const c2 = await signedDeposit(promoC); // never hedged, VOID -> customer
+  const c3 = await signedDeposit(promoC); // relayer-cancelled, auto refund
+  const d1 = await signedDeposit(promoD); // hedged, YES -> customer
+  const e1 = await signedDeposit(promoE); // hedged, NO -> shop
+  check(
+    gas0 - (await pub.getBalance({ address: customer.address })) ===
+      4n * OFFER * 10n ** 12n + OFFER * 10n ** 12n,
+    "customer spent exactly 5 x 1 USDC and zero gas (18-decimal native view)",
+  );
+  for (const k of [c1, d1, e1]) await gw.markHedged(k.r.purchasePda);
+  await gw.cancelUnhedged(c3.r.purchasePda);
+  const s3 = await gw.settlePurchase(c3.r.purchasePda);
+  check(
+    !s3.alreadyApplied &&
+      (await gw.getPurchaseState(c3.r.purchasePda, "confirmed"))?.state === "Refunded",
+    "auto refund after cancel (no customer tap)",
+    s3,
+  );
+  while ((await now()) < Number(deadlineV) + 1) await sleep(1500);
+  const rv = await gw.resolvePromotion(promoC, "VOID");
+  check(
+    !rv.alreadyApplied &&
+      (await gw.getArcPromoState(promoC, "confirmed"))?.state === "ResolvedVoid",
+    "resolvePromotion VOID (relayer) live",
+    rv,
+  );
+  await gw.resolvePromotion(promoD, "YES");
+  await gw.resolvePromotion(promoE, "NO");
+  const m0 = await usdcOf(merchant.address);
+  const cu0 = await usdcOf(customer.address);
+  const sb = await gw.settlePurchases([c1, c2, d1, e1].map((x) => x.r.purchasePda));
+  check(
+    sb.settled.length === 4 && sb.receipts.length === 1,
+    "settlePurchases: 4 payouts in one relayer tx",
+    sb,
+  );
+  check(
+    (await usdcOf(merchant.address)) - m0 === 2n * OFFER &&
+      (await usdcOf(customer.address)) - cu0 === 2n * OFFER,
+    "VOID hedged + NO → shop; VOID never-hedged + YES → customer",
+  );
+  const again = await gw.settlePurchases([c1, c2, d1, e1].map((x) => x.r.purchasePda));
+  check(again.settled.length === 0 && again.receipts.length === 0, "settle again: nothing, no tx");
+}
+
+console.log(
+  `\npromo A ${promoA}\npromo B ${promoB}${v2Promos.map((p) => `\nv2 promo ${p}`).join("")}\n${pass} passed, ${fail} failed`,
+);
 process.exit(fail ? 1 : 0);

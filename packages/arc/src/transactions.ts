@@ -1,4 +1,11 @@
-import { encodeFunctionData, erc20Abi, maxUint256, type Address, type Hex } from "viem";
+import {
+  encodeFunctionData,
+  erc20Abi,
+  maxUint256,
+  parseSignature,
+  type Address,
+  type Hex,
+} from "viem";
 import { HEDGED_ESCROW_ABI } from "./abi";
 import { toBytes16 } from "./ids";
 
@@ -112,3 +119,121 @@ export const buildCancelExpiredDepositTx = (escrow: Address, purchaseKey: Hex): 
     }),
     "Cancel my unconfirmed purchase",
   );
+
+// ------------------------------------------------------------------ v2: automatic settlement
+
+/** Contract cap for one batch (`MAX_SETTLE_BATCH`). */
+export const MAX_SETTLE_BATCH = 50;
+
+/**
+ * Push one purchase's payout to whoever it belongs to (customer: cancelled, never hedged after
+ * resolution, or hedged on YES; merchant: hedged on NO or VOID). Anyone may send it: the
+ * contract fixes the recipient and amount. Normally the backend relayer does.
+ */
+export const buildSettlePurchaseTx = (escrow: Address, purchaseKey: Hex): UnsignedTx =>
+  tx(
+    escrow,
+    encodeFunctionData({
+      abi: HEDGED_ESCROW_ABI,
+      functionName: "settlePurchase",
+      args: [purchaseKey],
+    }),
+    "Pay out this purchase",
+  );
+
+/** Batch (at most 50): skips anything already settled / not due instead of reverting. */
+export function buildSettlePurchasesTx(escrow: Address, purchaseKeys: readonly Hex[]): UnsignedTx {
+  if (purchaseKeys.length > MAX_SETTLE_BATCH)
+    throw new Error(`at most ${MAX_SETTLE_BATCH} purchases per batch, got ${purchaseKeys.length}`);
+  return tx(
+    escrow,
+    encodeFunctionData({
+      abi: HEDGED_ESCROW_ABI,
+      functionName: "settlePurchases",
+      args: [purchaseKeys],
+    }),
+    `Pay out ${purchaseKeys.length} purchases`,
+  );
+}
+
+/** A page of a promo's purchases in deposit order (limit capped at 50 on-chain). */
+export const buildSettlePromoTx = (
+  escrow: Address,
+  promoId: Hex,
+  offset = 0n,
+  limit = BigInt(MAX_SETTLE_BATCH),
+): UnsignedTx =>
+  tx(
+    escrow,
+    encodeFunctionData({
+      abi: HEDGED_ESCROW_ABI,
+      functionName: "settlePromo",
+      args: [promoId, offset, limit],
+    }),
+    "Pay out this promo",
+  );
+
+// ------------------------------------------------------------------ v2: one-signature checkout
+
+/**
+ * `depositWithAuthorization`: the customer's EIP-3009 signature (see `receiveAuthorizationTypedData`)
+ * turned into a transaction. ANYONE can send it (normally the backend relayer, which pays the
+ * gas); the purchase belongs to `customer`, the signer.
+ */
+export function buildDepositWithAuthorizationTx(
+  escrow: Address,
+  a: {
+    promoId: Hex;
+    purchaseIdHex: string;
+    customer: Address;
+    amount: bigint;
+    validAfter: bigint;
+    validBefore: bigint;
+    signature: Hex;
+  },
+): UnsignedTx {
+  const { v, r, s } = splitSignature(a.signature);
+  return tx(
+    escrow,
+    encodeFunctionData({
+      abi: HEDGED_ESCROW_ABI,
+      functionName: "depositWithAuthorization",
+      args: [
+        a.promoId,
+        toBytes16(a.purchaseIdHex),
+        a.customer,
+        a.amount,
+        a.validAfter,
+        a.validBefore,
+        v,
+        r,
+        s,
+      ],
+    }),
+    "Pay into escrow (signed authorization)",
+  );
+}
+
+/** `depositWithPermit`: the customer sends this themselves with an EIP-2612 permit signature. */
+export function buildDepositWithPermitTx(
+  escrow: Address,
+  a: { promoId: Hex; purchaseIdHex: string; amount: bigint; deadline: bigint; signature: Hex },
+): UnsignedTx {
+  const { v, r, s } = splitSignature(a.signature);
+  return tx(
+    escrow,
+    encodeFunctionData({
+      abi: HEDGED_ESCROW_ABI,
+      functionName: "depositWithPermit",
+      args: [a.promoId, toBytes16(a.purchaseIdHex), a.amount, a.deadline, v, r, s],
+    }),
+    "Pay into escrow (permit)",
+  );
+}
+
+/** 65-byte `r || s || v` (or 64-byte EIP-2098) signature -> `{ v, r, s }` for the contract. */
+export function splitSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
+  const sig = parseSignature(signature);
+  const v = sig.v !== undefined ? Number(sig.v) : 27 + (sig.yParity ?? 0);
+  return { v: v < 27 ? v + 27 : v, r: sig.r, s: sig.s };
+}

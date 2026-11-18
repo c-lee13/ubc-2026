@@ -4,6 +4,7 @@ import {
   type Commitment,
   type DepositEvent,
   type EventHandler,
+  type OnChainPromoAccount,
   type OnChainPurchaseAccount,
   type OnChainPurchaseState,
   type ResolutionEvent,
@@ -28,13 +29,24 @@ import {
   getPromoState,
   getPurchaseState,
   listPurchases,
+  previewSettlement,
   type ArcConfig,
   type ArcPromoAccount,
+  type SettlementPreview,
+  type SettleStatus,
 } from "../accounts";
-import { isBytes32 } from "../ids";
+import type { ArcOutcome } from "../codec";
+import { isBytes32, purchaseKeyOf, toBytes16 } from "../ids";
+import { MAX_SETTLE_BATCH, splitSignature } from "../transactions";
 import { ArcEventSource } from "./events";
 import { type ArcStreamsSignal } from "./streams";
-import { ProgramFailure, RpcFailure, SubmitTimeout, submitRelayerCall } from "./submit";
+import {
+  ProgramFailure,
+  RpcFailure,
+  SubmitTimeout,
+  submitRelayerCall,
+  type RelayerFn,
+} from "./submit";
 import { verifyArcTransaction } from "./verify";
 
 /**
@@ -85,6 +97,41 @@ const CANCELLED = parseAbiItem(
 const RESOLVED = parseAbiItem(
   "event ResolutionEvent(bytes32 indexed promo, uint8 outcome, address relayer, uint64 resolvedAt)",
 );
+const CLAIMED = parseAbiItem(
+  "event ClaimEvent(bytes32 indexed promo, bytes32 indexed purchase, address indexed recipient, uint64 amount, uint8 kind, uint64 claimedAt)",
+);
+const DEPOSITED = parseAbiItem(
+  "event DepositEvent(bytes32 indexed promo, bytes32 indexed purchase, address indexed customer, bytes16 purchaseId, uint64 amount, uint64 depositedAt)",
+);
+
+/** Arc ResolutionEvent: the shared shape, but the outcome may be "VOID" (v2). */
+export type ArcResolutionEvent = Omit<ResolutionEvent, "outcome"> & { outcome: ArcOutcome };
+
+/** The shared promo read shape. At runtime `state` can also be "ResolvedVoid" (v2), which
+ * @hedged/shared's OnChainPromoState does not list yet; use `getArcPromoState` for the honest type. */
+export type SharedArcPromoAccount = OnChainPromoAccount & { cancelTimeoutSecs: number };
+
+const TERMINAL = ["Refunded", "ClaimedByCustomer", "ClaimedByMerchant"];
+
+export interface SettleBatchResult {
+  /** Purchases paid by these calls (state re-read after the receipts). */
+  settled: Hex[];
+  /** Not paid now, with the reason (NotDue / Paused / AlreadySettled / NotFound, or "Failed"
+   * when the token refused the transfer: the purchase stays payable). */
+  skipped: { purchasePda: Hex; status: SettleStatus | "Failed" }[];
+  receipts: TxReceipt[];
+}
+
+export interface AuthorizedDeposit {
+  promoId: Hex;
+  purchaseIdHex: string;
+  customer: Address;
+  amount: bigint;
+  validAfter: bigint;
+  validBefore: bigint;
+  /** The customer's 65-byte EIP-712 signature over `receiveAuthorizationTypedData(...)`. */
+  signature: Hex;
+}
 
 export class ArcGateway implements SolanaServerGateway {
   readonly commitment: Commitment;
@@ -118,11 +165,33 @@ export class ArcGateway implements SolanaServerGateway {
   ): Promise<Unsubscribe> {
     return this.sub(["DepositEvent"], h, opts);
   }
+  /**
+   * Shared-interface subscription: YES/NO only. VOID resolutions are NOT delivered here, because
+   * a handler typed for "YES" | "NO" could treat them as NO (and settle hedges as losses); use
+   * `subscribeToArcResolutions` once the backend handles VOID.
+   */
   async subscribeToResolutions(
     h: EventHandler<ResolutionEvent>,
     opts?: SubscribeOptions,
   ): Promise<Unsubscribe> {
-    return this.sub(["ResolutionEvent"], h, opts);
+    return this.sub(
+      ["ResolutionEvent"],
+      (async (e: ArcResolutionEvent) => {
+        if (e.outcome === "VOID") {
+          this.o.log?.("VOID resolution not delivered to the YES/NO handler", { promo: e.promo });
+          return;
+        }
+        await h(e as ResolutionEvent);
+      }) as EventHandler<never>,
+      opts,
+    );
+  }
+  /** Every resolution including VOID (v2). */
+  async subscribeToArcResolutions(
+    h: EventHandler<ArcResolutionEvent>,
+    opts?: SubscribeOptions,
+  ): Promise<Unsubscribe> {
+    return this.sub(["ResolutionEvent"], h as EventHandler<never>, opts);
   }
   async subscribeToClaims(
     h: EventHandler<ClaimEvent>,
@@ -189,17 +258,22 @@ export class ArcGateway implements SolanaServerGateway {
     });
   }
 
+  /** Accepts the shared "YES" | "NO" and, on v2 escrows, "VOID" (event cancelled / market voided:
+   * hedged purchases pay the shop, never-hedged ones refund the customer). */
   async resolvePromotion(
     promoId: string,
-    outcome: "YES" | "NO",
+    outcome: ArcOutcome,
     opts?: SubmitOptions,
   ): Promise<TxReceipt> {
     const key = this.key(promoId);
-    const want = outcome === "YES" ? "ResolvedYes" : "ResolvedNo";
+    const want =
+      outcome === "YES" ? "ResolvedYes" : outcome === "NO" ? "ResolvedNo" : "ResolvedVoid";
+    const index = outcome === "YES" ? 0 : outcome === "NO" ? 1 : outcome === "VOID" ? 2 : -1;
+    if (index < 0) throw new SolanaGatewayError("TX_FAILED", `unknown outcome ${String(outcome)}`);
     try {
       return await this.relayerTransition({
         fn: "resolvePromo",
-        args: [key, outcome === "YES" ? 0 : 1],
+        args: [key, index],
         opts,
         target: async () => {
           const p = await getPromoState(this.o.publicClient, this.o.escrow, key, "confirmed");
@@ -219,13 +293,137 @@ export class ArcGateway implements SolanaServerGateway {
     }
   }
 
+  // ------------------------------------------------------------------ v2: automatic settlement
+
+  /**
+   * Push one purchase's payout to its entitled party. Idempotent: an already-settled purchase
+   * (by an earlier call or the customer's/merchant's own claim) resolves `alreadyApplied`; not
+   * yet due (promo Active and not cancelled) throws INVALID_STATE with the observed state.
+   */
+  async settlePurchase(purchaseKey: string, opts?: SubmitOptions): Promise<TxReceipt> {
+    const key = this.key(purchaseKey);
+    return this.relayerTransition({
+      fn: "settlePurchase",
+      args: [key],
+      opts,
+      target: async () => {
+        const u = await this.mustPurchase(key);
+        return TERMINAL.includes(u.state) ? true : u.state;
+      },
+      already: ["AlreadyClaimed"],
+      invalid: ["InvalidState"],
+      originalTx: () => this.findTx(CLAIMED, { purchase: key }),
+    });
+  }
+
+  /**
+   * Settle many purchases (any promos) with as few transactions as possible: previews each,
+   * sends only the payable ones in batches of 50, then re-reads state. Never throws for a
+   * single purchase; transport / pause / authorization problems throw like the other calls.
+   */
+  async settlePurchases(purchaseKeys: string[], opts?: SubmitOptions): Promise<SettleBatchResult> {
+    const keys = [...new Set(purchaseKeys.map((k) => this.key(k).toLowerCase() as Hex))];
+    const result: SettleBatchResult = { settled: [], skipped: [], receipts: [] };
+    const previews = await Promise.all(keys.map((k) => this.previewSettlement(k, "confirmed")));
+    const payable = previews.filter((p) => p.status === "Payable").map((p) => p.purchasePda);
+    for (const p of previews)
+      if (p.status !== "Payable")
+        result.skipped.push({ purchasePda: p.purchasePda, status: p.status });
+    for (let i = 0; i < payable.length; i += MAX_SETTLE_BATCH) {
+      const chunk = payable.slice(i, i + MAX_SETTLE_BATCH);
+      result.receipts.push(
+        await this.relayerTransition({
+          fn: "settlePurchases",
+          args: [chunk],
+          opts,
+          target: async () => true, // per-purchase outcome is re-read below
+          already: [],
+          invalid: [],
+          originalTx: async () => null,
+        }),
+      );
+      for (const k of chunk) {
+        const u = await this.mustPurchase(k);
+        if (TERMINAL.includes(u.state)) result.settled.push(k);
+        else result.skipped.push({ purchasePda: k, status: "Failed" });
+      }
+    }
+    return result;
+  }
+
+  /** Settle every payable purchase of a promo (e.g. right after `resolvePromotion`). */
+  async settlePromotion(promoId: string, opts?: SubmitOptions): Promise<SettleBatchResult> {
+    const all = await this.listPurchases(promoId, "confirmed");
+    const open = all.filter((u) => !TERMINAL.includes(u.state)).map((u) => u.purchasePda);
+    const r = await this.settlePurchases(open, opts);
+    const done = all.filter((u) => TERMINAL.includes(u.state));
+    for (const u of done)
+      r.skipped.push({ purchasePda: u.purchasePda as Hex, status: "AlreadySettled" });
+    return r;
+  }
+
+  async previewSettlement(
+    purchaseKey: string,
+    commitment?: Commitment,
+  ): Promise<SettlementPreview> {
+    return previewSettlement(
+      this.o.publicClient,
+      this.o.escrow,
+      this.key(purchaseKey),
+      commitment ?? this.commitment,
+    );
+  }
+
+  // ------------------------------------------------------------------ v2: one-signature checkout
+
+  /**
+   * Submit a customer's signed EIP-3009 authorization (`depositWithAuthorization`); the relayer
+   * pays the gas, the purchase belongs to `customer`. Idempotent: if this exact purchase already
+   * exists with the same customer and amount, resolves `alreadyApplied`.
+   */
+  async submitAuthorizedDeposit(
+    d: AuthorizedDeposit,
+    opts?: SubmitOptions,
+  ): Promise<TxReceipt & { purchasePda: Hex }> {
+    const promo = this.key(d.promoId);
+    const key = purchaseKeyOf(promo, d.customer, d.purchaseIdHex);
+    const { v, r, s } = splitSignature(d.signature);
+    const receipt = await this.relayerTransition({
+      fn: "depositWithAuthorization",
+      args: [
+        promo,
+        toBytes16(d.purchaseIdHex),
+        d.customer,
+        d.amount,
+        d.validAfter,
+        d.validBefore,
+        v,
+        r,
+        s,
+      ],
+      opts,
+      target: async () => {
+        const u = await getPurchaseState(this.o.publicClient, this.o.escrow, key, "confirmed");
+        if (!u) return "missing";
+        return u.customer.toLowerCase() === d.customer.toLowerCase() &&
+          u.amount === String(d.amount)
+          ? true
+          : `exists for another customer/amount`;
+      },
+      already: ["PurchaseAlreadyExists"],
+      invalid: [],
+      originalTx: () => this.findTx(DEPOSITED, { purchase: key }),
+    });
+    return { ...receipt, purchasePda: key };
+  }
+
   /**
    * Shared idempotent flow: simulate+send; an "Already*" or a timeout re-reads state and returns
    * `alreadyApplied` when the target holds; a conflicting state is INVALID_STATE with the observed
    * state; transport problems are RPC_UNAVAILABLE (nothing sent) or TX_TIMEOUT (outcome unknown).
    */
   private async relayerTransition(t: {
-    fn: "markHedged" | "cancelUnhedged" | "resolvePromo";
+    fn: RelayerFn;
     args: readonly unknown[];
     opts?: SubmitOptions;
     target: () => Promise<true | string>;
@@ -322,7 +520,18 @@ export class ArcGateway implements SolanaServerGateway {
   async getConfig(): Promise<ArcConfig | null> {
     return getConfig(this.o.publicClient, this.o.escrow, this.commitment);
   }
-  async getPromoState(promoId: string, commitment?: Commitment): Promise<ArcPromoAccount | null> {
+  /** Shared-interface read. See `SharedArcPromoAccount`: state may be "ResolvedVoid" at runtime. */
+  async getPromoState(
+    promoId: string,
+    commitment?: Commitment,
+  ): Promise<SharedArcPromoAccount | null> {
+    return (await this.getArcPromoState(promoId, commitment)) as SharedArcPromoAccount | null;
+  }
+  /** Same read with the honest Arc type (state includes "ResolvedVoid"). */
+  async getArcPromoState(
+    promoId: string,
+    commitment?: Commitment,
+  ): Promise<ArcPromoAccount | null> {
     return getPromoState(
       this.o.publicClient,
       this.o.escrow,
@@ -384,7 +593,8 @@ export class ArcGateway implements SolanaServerGateway {
 
   /** Locate the original transition tx for an `alreadyApplied` receipt (best effort, recent window). */
   private async findTx(
-    event: typeof HEDGE_MARKED | typeof CANCELLED | typeof RESOLVED,
+    event:
+      typeof HEDGE_MARKED | typeof CANCELLED | typeof RESOLVED | typeof CLAIMED | typeof DEPOSITED,
     args: Record<string, Hex>,
   ): Promise<{ hash: Hash; block: number } | null> {
     try {

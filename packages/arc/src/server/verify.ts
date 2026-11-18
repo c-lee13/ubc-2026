@@ -137,7 +137,8 @@ export async function verifyArcTransaction(
   for (const ev of decoded) {
     if (ev.name === "ResolutionEvent") {
       const p = await getPromoState(client, escrow, ev.promo, commitment);
-      const want = ev.outcome === "YES" ? "ResolvedYes" : "ResolvedNo";
+      const want =
+        ev.outcome === "YES" ? "ResolvedYes" : ev.outcome === "NO" ? "ResolvedNo" : "ResolvedVoid";
       if (!p || p.state !== want)
         throw new SolanaGatewayError(
           "VERIFICATION_FAILED",
@@ -183,6 +184,8 @@ export async function verifyArcTransaction(
     blockTime: Number(block.timestamp),
     commitment,
   };
+  // NOTE: a v2 ResolutionEvent may carry outcome "VOID", which @hedged/shared's ResolutionEvent
+  // type does not list yet (see README "Shared/backend changes needed").
   const events = decoded.map(
     ({ logIndex: _l, ...ev }) => ({ ...ev, ...position }) as unknown as ProgramEvent,
   );
