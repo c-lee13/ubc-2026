@@ -14,6 +14,18 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-18 ~04:40 ET · Dev 3 Dylan · branch `arc`
+
+- DEPLOYED HedgedEscrow v1 to Arc testnet: `ARC_ESCROW_ADDRESS=0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a`
+  (admin = deployer `0x1B26...3e92`, relayer = `0x1183...EC83`, USDC `0x3600...0000`, cancel timeout 600 s).
+  Thanks Rachel for the USDC. Circle key + App ID received and in Dylan's local `.env` (key accepted by Circle).
+- LIVE testnet run of every relayer move: 13/13 (`packages/arc/scripts/arc-live.ts`): create promo, deposit,
+  markHedged (+ idempotent repeat), cancelUnhedged + refund, too-early resolve refused, resolve YES/NO, customer
+  refund claim, merchant claim.
+- `frontend-dylan` is NOT pushed (local experiment only). Zahin owns the screens; don't wait on it.
+- Next: contract v2 (auto refunds/payouts, VOID = shop keeps hedged sales, depositWithAuthorization one-signature
+  checkout, per Rachel's spec) on a local branch; redeployed at a NEW address when done. Use v1 until then.
+
 ### 2026-11-18 ~04:30 ET · Dev 4 Rachel · branches `arc-backend-fixes` (+ merged PRs #7, #8)
 
 - Merged into `arc`: #7 (REST routes accept Arc `0x` ids, lowercase-stored; `/webhooks/quicknode` serves
@@ -35,8 +47,7 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 - Solana side also verified LIVE on Devnet with Caedy's relayer key: every relayer move 14/14 (markHedged,
   cancelUnhedged, resolve YES/NO, idempotent repeats, refund + merchant claim). Usable as a fallback.
 - In progress: Dev 1-style frontend on branch `frontend-dylan` (rebased on `arc`), following
-  `docs/email-wallets.md` (Circle email login + Arc checkout). Pushed but NOT merged so Zahin can reuse
-  or ignore it. Zahin: please say if you already have screens so we don't duplicate.
+  `docs/email-wallets.md` (Circle email login + Arc checkout). Local only (not pushed).
 - Arc deploy: waiting on testnet USDC from faucet.circle.com to deployer
   `0x1B26F37e79c16167a8EAc4bc4c2a1bFb93753e92`. Arc relayer `0x118318601ff299f6aAA8839B765d5Ca1bFD2EC83`
   (key on Dylan's Mac, which runs the demo backend). After deploy: contract address goes here.

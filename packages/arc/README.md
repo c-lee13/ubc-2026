@@ -24,7 +24,7 @@ in the repo untouched; which chain runs is a config choice (`SOLANA_GATEWAY=arc`
 
 Network (verified 2026-11-17 against the live RPC): chain id `5042002`, RPC
 `https://rpc.testnet.arc.io`, explorer `https://explorer.testnet.arc.io`, faucet
-`https://faucet.circle.com` (Arc Testnet). Contract address: **not deployed yet** (see Deploy).
+`https://faucet.circle.com` (Arc Testnet). Contract address (Arc testnet, deployed 2026-11-18): **`0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a`** ([explorer](https://explorer.testnet.arc.io/address/0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a)), relayer `0x118318601ff299f6aAA8839B765d5Ca1bFD2EC83`. Live check: `scripts/arc-live.ts` (13/13 on testnet).
 
 ## Contract (`contracts/arc`)
 
