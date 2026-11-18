@@ -8,6 +8,16 @@ export interface ApiConfig {
   supabase: { url: string; serviceRoleKey: string } | null;
   /** Per-IP limit on POST requests (webhooks exempt). */
   writeRateLimit: { maxPerWindow: number; windowMs: number };
+  /** Circle user-controlled wallets (email login). Server-only key; null = wallet routes off. */
+  circle: { apiKey: string; appId: string } | null;
+  /** Arc checkout for email wallets: escrow + USDC on Arc testnet. null = checkout routes off. */
+  arcCheckout: {
+    escrow: string;
+    rpcUrl: string;
+    blockchain: string;
+    accountType: "EOA" | "SCA";
+    allowanceCap: bigint;
+  } | null;
   /** Exposure desk (simulated netting across shops). */
   desk: { lotContracts: number; rebalanceMs: number };
   workers: {
@@ -55,6 +65,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       ),
       windowMs: 60_000,
     },
+    circle:
+      env.CIRCLE_API_KEY && env.CIRCLE_APP_ID
+        ? { apiKey: env.CIRCLE_API_KEY, appId: env.CIRCLE_APP_ID }
+        : null,
+    arcCheckout: env.ARC_ESCROW_ADDRESS
+      ? {
+          escrow: env.ARC_ESCROW_ADDRESS,
+          rpcUrl: env.ARC_RPC_URL || "https://rpc.testnet.arc.io",
+          blockchain: "ARC-TESTNET",
+          accountType: env.CIRCLE_ACCOUNT_TYPE === "SCA" ? "SCA" : "EOA",
+          // First approval allows up to this much (base units), so later purchases are one tap.
+          allowanceCap: BigInt(
+            nonNegativeInt(env.CHECKOUT_ALLOWANCE_CAP, 100_000_000, "CHECKOUT_ALLOWANCE_CAP"),
+          ),
+        }
+      : null,
     desk: {
       lotContracts: Math.max(1, nonNegativeInt(env.DESK_LOT_CONTRACTS, 10, "DESK_LOT_CONTRACTS")),
       rebalanceMs: nonNegativeInt(env.DESK_REBALANCE_MS, 15_000, "DESK_REBALANCE_MS"),
