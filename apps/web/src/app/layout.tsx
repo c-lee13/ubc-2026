@@ -1,18 +1,34 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Archivo } from "next/font/google";
 import type { ReactNode } from "react";
-import { SolanaProvider } from "@/components/solana-provider";
+import { FixtureSheets } from "@/components/fixture-sheets";
+import { WalletSessionProvider } from "@/lib/wallet/session";
 import "./globals.css";
 
+// One variable family: the width axis gives the expanded banknote display cut and the text cut.
+const archivo = Archivo({
+  subsets: ["latin"],
+  axes: ["wdth"],
+  variable: "--font-archivo",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Hedged Refund Promotions (Devnet demo)",
-  description: "Simulation-first conditional refunds on Solana Devnet. Test tokens only.",
+  title: "Hedged: refund promos priced by the market (Arc testnet demo)",
+  description:
+    "A shop offers your money back if something happens. You pay in dollars with an email login; the payment waits in an escrow on Arc and the shop's risk is covered at live Gemini odds (simulated). Test USDC only.",
 };
+
+export const viewport: Viewport = { themeColor: "#13233f" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-white text-neutral-900 antialiased">
-        <SolanaProvider>{children}</SolanaProvider>
+    <html lang="en" className={archivo.variable}>
+      <body className="min-h-screen bg-paper text-ink antialiased">
+        <WalletSessionProvider>
+          {children}
+          <FixtureSheets />
+        </WalletSessionProvider>
       </body>
     </html>
   );

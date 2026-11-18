@@ -1,1 +1,116 @@
 @import "tailwindcss";
+
+/*
+ * Design tokens. The product is a conditional refund, so the visual language is security printing:
+ * cool banknote paper, intaglio navy ink, guilloche green. Two kinds of truth are always visibly
+ * different: violet = a real Devnet record, hatched ochre = a simulated hedge.
+ */
+@theme {
+  --color-paper: #eef1ec;
+  --color-paper-raised: #f8f9f6;
+  --color-paper-deep: #e2e7e1;
+  --color-ink: #13233f;
+  --color-ink-soft: #4b5873;
+  --color-ink-faint: #7d879b;
+  --color-rule: #c6cfc8;
+  --color-note: #1e6a5a;
+  --color-note-soft: #d5e6df;
+  --color-chain: #5b3cc4;
+  --color-chain-soft: #e7e1fb;
+  --color-sim: #9a6510;
+  --color-sim-soft: #f6ead3;
+  --color-stamp: #b8382a;
+  --color-stamp-soft: #f6dfda;
+
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --animate-stamp: stamp-land 420ms cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+  --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes stamp-land {
+  /* Starts visible: if animations stall (background tab) the stamp is still readable. */
+  0% {
+    transform: rotate(var(--stamp-rot, -8deg)) scale(1.45);
+  }
+  70% {
+    transform: rotate(var(--stamp-rot, -8deg)) scale(0.96);
+  }
+  100% {
+    transform: rotate(var(--stamp-rot, -8deg)) scale(1);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    font-feature-settings: "tnum" 1;
+  }
+  ::selection {
+    background: var(--color-note-soft);
+  }
+  :focus-visible {
+    outline: 2.5px solid var(--color-chain);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+    }
+  }
+}
+
+@utility font-display {
+  font-stretch: 125%;
+  font-variation-settings: "wdth" 125;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 0.98;
+}
+
+@utility font-wide {
+  font-stretch: 118%;
+  font-variation-settings: "wdth" 118;
+}
+
+/* Simulated values: diagonal hatching, the drafting convention for "projected, not real". */
+@utility bg-hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--color-sim) 22%, transparent) 0 1px,
+    transparent 1px 6px
+  );
+}
+
+@utility bg-hatch-soft {
+  background-color: var(--color-sim-soft);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--color-sim) 16%, transparent) 0 1px,
+    transparent 1px 7px
+  );
+}
