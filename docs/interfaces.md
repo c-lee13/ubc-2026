@@ -259,6 +259,7 @@ and dashboard data is derivable from public chain data and public Gemini prices.
 - **Email-login wallets + Arc checkout** (Circle; `X-User-Token` header): `POST /api/wallet/email-login`,
   `POST /api/wallet/init`, `GET /api/wallet`, `GET /api/checkout/:promoId/status`,
   `POST /api/checkout/:promoId/approve`, `POST /api/checkout/:promoId/deposit`, `POST /api/wallet/faucet`,
+  `POST /api/checkout/:promoId/sign` + `/submit` (escrow v2 one-tap checkout; relayer pays gas),
   `POST /api/promotions/:id/initialize` (shop publishes a draft), `POST /api/purchases/:key/claim-refund`,
   `POST /api/purchases/:key/cancel-expired`, `POST /api/purchases/claim-merchant` (contract v1 claims).
   Flow and errors: `docs/FRONTEND-API.md` (full frontend reference) and `docs/email-wallets.md`.

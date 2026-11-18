@@ -6,10 +6,14 @@ import {
   buildClaimRefundTx,
   buildDepositTx,
   buildInitializePromoTx,
+  ARC_TESTNET_USDC_DOMAIN,
   newPurchaseIdHex,
   promoIdOf,
   purchaseKeyOf,
+  receiveAuthorizationTypedData,
+  toCircleTypedDataJson,
 } from "@hedged/arc";
+import { SolanaGatewayError } from "@hedged/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Address, Hex } from "viem";
 import { canonical } from "../chain-ids";
@@ -27,10 +31,26 @@ import { ALREADY_INITIALIZED, CircleError, type CircleClient } from "./client";
  * we never see the user's key. Every action that moves money returns a Circle `challengeId` that
  * the SDK shows to the user to approve (`sdk.execute(challengeId)`): nothing is signed here.
  *
- * Checkout on Arc is approve + deposit. The first approval allows up to `allowanceCap` (default
- * $100), so later purchases need a single approval. The escrow can only pull funds when the
- * customer calls `deposit` themselves, for exactly the promo price.
+ * Checkout on Arc, two ways:
+ * - v2 escrow ("one-tap"): the customer signs ONE EIP-3009 authorization for exactly the promo
+ *   price (`/sign`); our relayer submits `depositWithAuthorization` and pays the gas (`/submit`).
+ *   The signature only works for that promo, customer, purchase id and amount.
+ * - v1 escrow: approve + deposit. The first approval allows up to `allowanceCap` (default $100),
+ *   so later purchases need a single approval.
  */
+
+/** Relayer submission of a signed EIP-3009 deposit (the Arc gateway's `submitAuthorizedDeposit`). */
+export interface OneTapSubmitter {
+  submitAuthorizedDeposit(d: {
+    promoId: Hex;
+    purchaseIdHex: string;
+    customer: Address;
+    amount: bigint;
+    validAfter: bigint;
+    validBefore: bigint;
+    signature: Hex;
+  }): Promise<{ purchasePda: string; signature: string | null; alreadyApplied?: boolean }>;
+}
 export interface CircleRouteDeps {
   circle: CircleClient | null;
   appId: string | null;
@@ -41,6 +61,8 @@ export interface CircleRouteDeps {
     blockchain: string;
     accountType: "EOA" | "SCA";
     allowanceCap: bigint;
+    /** Set when the escrow is v2 AND this server runs the Arc relayer: enables one-tap checkout. */
+    oneTap?: OneTapSubmitter | null;
   } | null;
   store: Store;
   gemini: Pick<GeminiAdapter, "getQuote">;
@@ -57,6 +79,10 @@ interface CircleWallet {
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BYTES32 = /^0x[0-9a-f]{64}$/;
+const PURCHASE_ID = /^[0-9a-f]{32}$/;
+const SIGNATURE = /^0x[0-9a-fA-F]{130}$/;
+/** How long a one-tap signature stays valid (capped at the promo's deposit deadline). */
+const SIGNATURE_TTL_SECS = 300;
 
 export function registerCircleRoutes(app: FastifyInstance, deps: CircleRouteDeps): void {
   const nowUnix = () => Math.floor((deps.now?.() ?? new Date()).getTime() / 1000);
@@ -155,7 +181,9 @@ export function registerCircleRoutes(app: FastifyInstance, deps: CircleRouteDeps
           pauseReason: ctx.pauseReason,
           usdcBalance: ctx.balance.toString(),
           enoughBalance: ctx.balance >= ctx.promo.offerAmount,
-          needsApproval: ctx.allowance < ctx.promo.offerAmount,
+          // "one-tap": /sign then /submit. "approve-deposit": /approve (if needsApproval), then /deposit.
+          checkout: deps.arc!.oneTap ? "one-tap" : "approve-deposit",
+          needsApproval: !deps.arc!.oneTap && ctx.allowance < ctx.promo.offerAmount,
         };
       } catch (err) {
         return circleError(reply, err);
@@ -243,6 +271,130 @@ export function registerCircleRoutes(app: FastifyInstance, deps: CircleRouteDeps
       }
     },
   );
+
+  // 6a. One-tap (v2): the customer signs once. Body: { walletId }.
+  //     -> { challengeId, purchaseIdHex, purchaseKey, validBefore, submit }. Keep purchaseIdHex and
+  //     validBefore: /submit needs them with the signature from sdk.execute's result.
+  app.post<{ Params: { promoId: string }; Body: { walletId?: unknown } }>(
+    "/api/checkout/:promoId/sign",
+    async (req, reply) => {
+      if (!deps.circle || !deps.arc) return disabled(reply);
+      if (!deps.arc.oneTap) return reply.code(409).send({ error: "one_tap_unavailable" });
+      const userToken = token(req, reply);
+      if (!userToken) return;
+      try {
+        const ctx = await checkoutContext(userToken, req.params.promoId, req.body?.walletId, reply);
+        if (!ctx) return;
+        const refusal = buyRefusal(ctx);
+        if (refusal) return reply.code(409).send(refusal);
+        const purchaseIdHex = newPurchaseIdHex();
+        const validBefore = BigInt(
+          Math.min(nowUnix() + SIGNATURE_TTL_SECS, ctx.promo.depositDeadline),
+        );
+        const typed = receiveAuthorizationTypedData({
+          domain: { ...ARC_TESTNET_USDC_DOMAIN, verifyingContract: deps.arc.token as Address },
+          escrow: deps.arc.escrow as Address,
+          promoId: ctx.promo.promoPda as Hex,
+          customer: ctx.wallet.address as Address,
+          purchaseIdHex,
+          amount: ctx.promo.offerAmount,
+          validBefore,
+        });
+        const d = await deps.circle.request<{ challengeId: string }>(
+          "POST",
+          "/v1/w3s/user/sign/typedData",
+          {
+            userToken,
+            body: {
+              walletId: ctx.wallet.id,
+              data: toCircleTypedDataJson(typed),
+              memo: `Pay ${formatUsd(ctx.promo.offerAmount)} for ${ctx.promo.itemName}`.slice(
+                0,
+                100,
+              ),
+            },
+          },
+        );
+        return {
+          step: "sign",
+          challengeId: d.challengeId,
+          purchaseIdHex,
+          purchaseKey: canonical(typed.message.nonce),
+          validBefore: Number(validBefore),
+          submit: `/api/checkout/${ctx.promo.id}/submit`,
+        };
+      } catch (err) {
+        return circleError(reply, err);
+      }
+    },
+  );
+
+  // 6b. One-tap (v2): hand the signature to the relayer, which submits the deposit and pays gas.
+  //     Body: { walletId, purchaseIdHex, validBefore, signature } -> { purchaseKey, receipt, txHash }.
+  app.post<{
+    Params: { promoId: string };
+    Body: {
+      walletId?: unknown;
+      purchaseIdHex?: unknown;
+      validBefore?: unknown;
+      signature?: unknown;
+    };
+  }>("/api/checkout/:promoId/submit", async (req, reply) => {
+    if (!deps.circle || !deps.arc) return disabled(reply);
+    const oneTap = deps.arc.oneTap;
+    if (!oneTap) return reply.code(409).send({ error: "one_tap_unavailable" });
+    const userToken = token(req, reply);
+    if (!userToken) return;
+    const { purchaseIdHex, validBefore, signature } = req.body ?? {};
+    if (typeof purchaseIdHex !== "string" || !PURCHASE_ID.test(purchaseIdHex)) {
+      return reply.code(400).send({ error: "invalid_purchase_id" });
+    }
+    if (typeof validBefore !== "number" || !Number.isInteger(validBefore)) {
+      return reply.code(400).send({ error: "invalid_valid_before" });
+    }
+    if (typeof signature !== "string" || !SIGNATURE.test(signature)) {
+      return reply.code(400).send({ error: "invalid_signature" });
+    }
+    if (validBefore <= nowUnix()) return reply.code(409).send({ error: "signature_expired" });
+    try {
+      const ctx = await checkoutContext(userToken, req.params.promoId, req.body?.walletId, reply);
+      if (!ctx) return;
+      // Re-checked: the price may have moved since /sign. Nothing is paid yet; an unused
+      // signature just expires.
+      const refusal = buyRefusal(ctx);
+      if (refusal) return reply.code(409).send(refusal);
+      try {
+        const r = await oneTap.submitAuthorizedDeposit({
+          promoId: ctx.promo.promoPda as Hex,
+          purchaseIdHex,
+          customer: ctx.wallet.address as Address,
+          amount: ctx.promo.offerAmount,
+          validAfter: 0n,
+          validBefore: BigInt(validBefore),
+          signature: signature as Hex,
+        });
+        const purchaseKey = canonical(r.purchasePda);
+        return {
+          step: "submitted",
+          purchaseKey,
+          receipt: `/api/purchases/${purchaseKey}`,
+          txHash: r.signature,
+          alreadyApplied: Boolean(r.alreadyApplied),
+        };
+      } catch (err) {
+        if (!(err instanceof SolanaGatewayError)) throw err;
+        if (err.retryable) {
+          return reply.code(503).send({ error: "relayer_unavailable", message: err.message });
+        }
+        // Bad or reused signature, deadline passed, paused, ...: nothing was taken.
+        return reply
+          .code(409)
+          .send({ error: "deposit_rejected", code: err.code, message: err.message });
+      }
+    } catch (err) {
+      return circleError(reply, err);
+    }
+  });
 
   // 7. Testnet USDC for a demo wallet (Circle faucet; Circle may refuse non-upgraded accounts).
   app.post<{ Body: { walletId?: unknown } }>("/api/wallet/faucet", async (req, reply) => {
@@ -472,6 +624,17 @@ export function registerCircleRoutes(app: FastifyInstance, deps: CircleRouteDeps
     };
   }
 
+  function buyRefusal(ctx: {
+    canBuy: boolean;
+    pauseReason: unknown;
+    balance: bigint;
+    promo: { offerAmount: bigint };
+  }) {
+    if (!ctx.canBuy) return { error: "promo_not_buyable", pauseReason: ctx.pauseReason };
+    if (ctx.balance < ctx.promo.offerAmount) return { error: "insufficient_usdc" };
+    return null;
+  }
+
   async function contractCall(
     userToken: string,
     walletId: string,
@@ -496,6 +659,12 @@ export function registerCircleRoutes(app: FastifyInstance, deps: CircleRouteDeps
     );
     return d.challengeId;
   }
+}
+
+/** 5000000 -> "$5.00" (USDC base units, 6 decimals). */
+function formatUsd(amount: bigint): string {
+  const cents = (amount + 5_000n) / 10_000n;
+  return `$${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")}`;
 }
 
 function token(req: FastifyRequest, reply: FastifyReply): string | null {

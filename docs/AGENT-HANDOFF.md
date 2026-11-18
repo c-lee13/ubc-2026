@@ -14,6 +14,19 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-18 13:45 ET · Dev 4 Rachel · branch `arc-v2-api`
+
+- API now uses escrow v2 when `ARC_ESCROW_ADDRESS` is v2 and `SOLANA_GATEWAY=arc` (detected at startup, logged):
+  one-tap checkout `POST /api/checkout/:promoId/sign` -> `sdk.execute` -> `POST /api/checkout/:promoId/submit`
+  (relayer submits `depositWithAuthorization`, pays gas); automatic payouts after a relayer cancel and after
+  resolution (`settlePurchase` / `settlePromotion`), retried by the sweep until every purchase is paid.
+- Frontend reads `status.checkout` ("one-tap" | "approve-deposit") and `autoPayout` on receipts/lists; v1 claim
+  routes stay as fallbacks. `docs/FRONTEND-API.md` updated.
+- Dylan: switch the demo backend's `ARC_ESCROW_ADDRESS` to v2 `0xc7fe...4a39` after this merges; promos published
+  on v1 stay on v1 (create new ones on v2).
+- Not done: VOID (needs `@hedged/shared` changes, owners' review); never triggered by the backend today.
+  Not yet run end-to-end on testnet: Circle typed-data signing needs a real browser login.
+
 ### 2026-11-18 13:18 ET · Dev 4 Rachel · branch `arc-frontend-api`
 
 - Added every route the new frontend needs (all via Circle challenges, contract v1): `POST /api/promotions/:id/initialize`

@@ -5,7 +5,7 @@ import type { GeminiAdapter, QuoteResult } from "../gemini/adapter";
 import { GeminiUnavailableError } from "../gemini/client";
 import { MemoryStore } from "../store/memory-store";
 import { FakeSolanaGateway } from "./fake-gateway";
-import { createOrchestrator } from "./orchestrator";
+import { createOrchestrator, type Settler } from "./orchestrator";
 
 /*
  * Scenario tests for CLAUDE.md §5.1 against an in-memory store and the FAKE gateway (no Solana,
@@ -15,7 +15,9 @@ import { createOrchestrator } from "./orchestrator";
 const MARKET = "GEMI-TEST-EVT-TEX";
 const PROMO = "PROMO_PDA";
 
-function setup(opts: { asks?: [string, string][]; budget?: bigint; cap?: bigint } = {}) {
+function setup(
+  opts: { asks?: [string, string][]; budget?: bigint; cap?: bigint; settler?: Settler } = {},
+) {
   let clock = Date.parse("2026-11-21T15:00:00.000Z");
   const now = () => new Date(clock);
   const nowUnix = () => Math.floor(clock / 1000);
@@ -56,6 +58,7 @@ function setup(opts: { asks?: [string, string][]; budget?: bigint; cap?: bigint 
   const orch = createOrchestrator({
     store,
     gateway,
+    settler: opts.settler ?? null,
     gemini,
     config: {
       maxQuoteAgeMs: 15_000,
@@ -448,5 +451,83 @@ test("fix: a failing purchase during resolution does not block the others; sweep
   assert.equal(await t.orch.needsSweep(fresh), true);
   await t.orch.reconcilePromotion(promo.id);
   assert.equal((await t.purchase("P2"))?.status, "CANCELLED");
+  assert.equal(await t.orch.needsSweep((await t.store.getPromotion(promo.id))!), false);
+});
+
+/** Records payout pushes; the chain side is the fake gateway's claim (what settlement does). */
+function fakeSettler() {
+  const calls: string[] = [];
+  let failNext = 0;
+  const s: Settler & { calls: string[]; failNext(n: number): void } = {
+    calls,
+    failNext: (n) => void (failNext = n),
+    async settlePurchase(pda) {
+      calls.push(`purchase:${pda}`);
+      if (failNext-- > 0) throw new Error("rpc down");
+    },
+    async settlePromotion(promoPda) {
+      calls.push(`promo:${promoPda}`);
+      if (failNext-- > 0) throw new Error("rpc down");
+      return { settled: [], skipped: [] };
+    },
+  };
+  return s;
+}
+
+test("v2: a relayer cancel is followed by an automatic refund push", async () => {
+  const settler = fakeSettler();
+  const t = setup({ asks: [["930000", "1000"]], settler });
+  await t.promoReady;
+  await t.orch.handleDeposit(t.gateway.deposit(PROMO, "P1"));
+  assert.equal((await t.purchase("P1"))?.status, "CANCELLED");
+  assert.deepEqual(settler.calls, ["purchase:P1"]);
+});
+
+test("v2: resolution pushes the promo's payouts; a failed push is retried by the sweep", async () => {
+  const settler = fakeSettler();
+  const t = setup({ settler });
+  const promo = await t.promoReady;
+  await t.orch.handleDeposit(t.gateway.deposit(PROMO, "P1"));
+  t.advance(3600);
+  t.gem.outcome = {
+    marketId: MARKET,
+    outcome: "NO",
+    source: "gemini-official-settlement",
+    resolvedAt: "2026-11-21T23:00:00.000Z",
+    fetchedAt: "2026-11-21T23:01:00.000Z",
+  };
+  settler.failNext(99); // every attempt fails: resolution itself must still succeed
+  await t.orch.resolveDuePromotions();
+  assert.equal(t.gateway.promos.get(PROMO)?.state, "ResolvedNo");
+  assert.equal((await t.purchase("P1"))?.status, "RESOLVED");
+  assert.ok(settler.calls.includes(`promo:${PROMO}`));
+
+  // Unpaid purchase keeps the promo in the sweep, which pushes again.
+  const active = (await t.store.getPromotion(promo.id))!;
+  assert.equal(await t.orch.needsSweep(active), true);
+  settler.failNext(0);
+  settler.calls.length = 0;
+  await t.orch.reconcilePromotion(promo.id);
+  assert.deepEqual(settler.calls, [`promo:${PROMO}`]);
+
+  // Once the payout's ClaimEvent is recorded, the promo leaves the sweep.
+  await t.orch.handleClaim(t.gateway.claim("P1"));
+  assert.equal((await t.purchase("P1"))?.status, "CLAIMED");
+  assert.equal(await t.orch.needsSweep(active), false);
+});
+
+test("v1 (no settler): nothing is pushed; a resolved promo leaves the sweep (claims are manual)", async () => {
+  const t = setup();
+  const promo = await t.promoReady;
+  await t.orch.handleDeposit(t.gateway.deposit(PROMO, "P1"));
+  t.advance(3600);
+  t.gem.outcome = {
+    marketId: MARKET,
+    outcome: "NO",
+    source: "gemini-official-settlement",
+    resolvedAt: "2026-11-21T23:00:00.000Z",
+    fetchedAt: "2026-11-21T23:01:00.000Z",
+  };
+  await t.orch.resolveDuePromotions();
   assert.equal(await t.orch.needsSweep((await t.store.getPromotion(promo.id))!), false);
 });

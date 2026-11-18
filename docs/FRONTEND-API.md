@@ -68,7 +68,10 @@ Errors on initialize: `403 not_this_shops_wallet`, `409 already_published`, `409
 Poll every few seconds. Hand over the item only when `canServe` is true. `orderCode` (4 characters)
 is also on the customer's receipt, so staff can match the two.
 
-### Collect payments after a NO result (contract v1)
+### Collect payments after a NO result (fallback)
+
+With `autoPayout: true` this happens automatically; this route is the manual fallback (and the
+only way on escrow v1).
 
 🔑 `POST /api/purchases/claim-merchant` `{ walletId, purchaseKeys: [...] }` (1–20 keys, from the
 counter feed where `onChainState` is `"Hedged"`) → `{ challenges: [{ purchaseKey, challengeId }] }`.
@@ -86,17 +89,36 @@ yet, or already collected).
 ### Checkout
 
 1. 🔑 `GET /api/checkout/:promoId/status?walletId=…` → `{ promoId, price, canBuy, pauseReason,
-usdcBalance, enoughBalance, needsApproval }`. Enable "Pay" only if `canBuy && enoughBalance`.
+usdcBalance, enoughBalance, checkout, needsApproval }`. Enable "Pay" only if
+   `canBuy && enoughBalance`. `checkout` says which flow to run.
+
+**`checkout: "one-tap"` (escrow v2, the demo setup): one approval, no gas for the customer.**
+
+2. 🔑 `POST /api/checkout/:promoId/sign` `{ walletId }` → `{ step: "sign", challengeId,
+purchaseIdHex, purchaseKey, validBefore, submit }`. Run
+   `sdk.execute(challengeId, (err, result) => …)`: Circle shows "Pay $5.00 for Latte" and the
+   callback's `result.data.signature` is the signature.
+3. 🔑 `POST {submit}` (= `/api/checkout/:promoId/submit`) `{ walletId, purchaseIdHex, validBefore,
+signature }` → `{ step: "submitted", purchaseKey, receipt, txHash }`. Our relayer sends the
+   payment on-chain and pays the gas; this call returns once it has landed (a few seconds).
+   The signature is valid for 5 minutes and only for this promo, customer, purchase id and price.
+
+**`checkout: "approve-deposit"` (escrow v1): kept as the fallback.**
+
 2. If `needsApproval` (first purchase only): 🔑 `POST /api/checkout/:promoId/approve` `{ walletId }` →
    `{ step: "approve", challengeId, allowance }` → `sdk.execute`, then poll `status` until
    `needsApproval` is false. It allows up to $100, so later purchases are one approval.
 3. 🔑 `POST /api/checkout/:promoId/deposit` `{ walletId }` → `{ challengeId, purchaseIdHex,
 purchaseKey, receipt }` → `sdk.execute`.
-4. Poll `GET {receipt}` (= `/api/purchases/:purchaseKey`) until `step` leaves `PROCESSING`. It
-   returns `404` for a few seconds until the deposit is seen; keep polling.
 
-Errors: `409 promo_not_buyable` (+ `pauseReason`), `409 insufficient_usdc`, `409 approval_needed`,
-`409 already_approved`, `404 wallet_not_found`, `409 not_an_arc_promotion`.
+**Both:** 4. Poll `GET {receipt}` (= `/api/purchases/:purchaseKey`) until `step` leaves `PROCESSING`.
+It can return `404` for a few seconds until the payment is seen; keep polling.
+
+Errors: `409 promo_not_buyable` (+ `pauseReason`; the price can move between sign and submit, in
+which case nothing is paid), `409 insufficient_usdc`, `409 signature_expired` (sign again),
+`409 deposit_rejected` (chain refused the signature; nothing was taken), `503 relayer_unavailable`
+(retry submit with the same body), `409 one_tap_unavailable` (use approve-deposit),
+`409 approval_needed`, `409 already_approved`, `404 wallet_not_found`, `409 not_an_arc_promotion`.
 
 ### Receipt and "my purchases"
 
@@ -106,9 +128,15 @@ onChainState, step, canServe, message, promotion, hedge, transactions }`. `hedge
 - `GET /api/purchases?customer=<address>` → `{ customer, purchases: [summary + promotion] }`, newest
   first (max 50).
 
-### Getting money back (contract v1)
+### Getting money back
 
-Show the button from the receipt's `step`:
+Every receipt and list row has `autoPayout`.
+
+- **`autoPayout: true` (escrow v2):** refunds and YES payouts are sent automatically; shops are paid
+  automatically after a NO result. Show the `message` ("Your refund is on its way.") and no claim
+  button. Only if a purchase sits at `REFUND_READY` / `YOU_WON` for more than a few minutes, offer the
+  claim buttons below as a fallback.
+- **`autoPayout: false` (escrow v1):** show the button from the receipt's `step`:
 
 | `step`                   | Button                | Call (🔑, body `{ walletId }`)            |
 | ------------------------ | --------------------- | ----------------------------------------- |
@@ -137,7 +165,7 @@ itemName, offerAmount, outcomeLabel, geminiMarketId, depositDeadline, onChainSta
 - `liveAskMicroUsd` is the market's implied chance the item ends up free.
 
 **purchase summary** (lists): `{ purchasePda, orderCode, customer, amount, depositedAt, status,
-onChainState, step, canServe, message, receipt }`.
+onChainState, step, canServe, message, autoPayout, receipt }`.
 
 - `step`: `PROCESSING` · `HEDGED` · `REFUNDING` · `REFUND_READY` · `REFUNDED` · `WAITING_FOR_RESULT`
   · `YOU_WON` · `NOT_THIS_TIME` · `DONE`. `message` is ready-to-show customer copy.
@@ -163,9 +191,16 @@ API: `SOLANA_GATEWAY=arc`, `ARC_RPC_URL`, `ARC_ESCROW_ADDRESS`, `ARC_RELAYER_KEY
 `CIRCLE_API_KEY`, `CIRCLE_APP_ID`, `API_CORS_ORIGIN` (comma-separated, e.g.
 `http://localhost:3000,https://<deployed web origin>`). See `.env.example`.
 
-## Contract v1 now, v2 next
+## Escrow v1 vs v2
 
-The API targets escrow v1 (`0x6032…c82a`). v2 (auto refunds/payouts, a VOID result, one-signature
-checkout) is deployed but its code isn't merged yet. When it lands, checkout drops the approve step
-and the claim buttons become fallbacks. Build the claim buttons from `step` as above, and the v2
-switch won't change the screens.
+The API detects the version of `ARC_ESCROW_ADDRESS` at startup and logs it.
+
+- **v2** (`0xc7fe8ca11b1b5b2260aa7faa638c0ae233b44a39`), with `SOLANA_GATEWAY=arc` (our relayer):
+  `checkout: "one-tap"`, `autoPayout: true`.
+- **v1** (`0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a`), or v2 without the relayer:
+  `checkout: "approve-deposit"`, `autoPayout: false`.
+
+Build both branches off those two fields and the screens work on either contract.
+
+Not handled yet: a VOID result (game cancelled; the contract pays hedged sales to the shop and
+refunds the rest). The backend never resolves a promo as VOID today, so the frontend will not see it.
