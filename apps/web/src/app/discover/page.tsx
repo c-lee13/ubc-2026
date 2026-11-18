@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { DiscoverView } from "@/components/discover-view";
 import { SiteHeader } from "@/components/site-header";
 
-export const metadata: Metadata = { title: "Discover: Hedged (Arc testnet demo)" };
+export const metadata: Metadata = { title: "Discover: Wincentive (Arc testnet demo)" };
 
 export default function DiscoverPage() {
   return (

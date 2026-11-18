@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { CounterView } from "@/components/counter-view";
 import { SiteHeader } from "@/components/site-header";
 
-export const metadata: Metadata = { title: "Counter: Hedged (Arc testnet demo)" };
+export const metadata: Metadata = { title: "Counter: Wincentive (Arc testnet demo)" };
 
 /** The barista's screen for one promo: its QR code and the live order feed. */
 export default async function CounterPage({ params }: { params: Promise<{ promoId: string }> }) {

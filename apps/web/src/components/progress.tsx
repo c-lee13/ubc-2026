@@ -42,8 +42,8 @@ function Dot({ state }: { state: StepState }) {
   const cls = {
     todo: "ring-1 ring-ink/25",
     skipped: "ring-1 ring-ink/15",
-    done: "bg-note text-paper-raised",
-    error: "bg-stamp text-paper-raised",
+    done: "bg-note text-paper",
+    error: "bg-stamp text-white",
   }[state];
   return (
     <span

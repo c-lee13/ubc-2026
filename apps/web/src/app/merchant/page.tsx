@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { MerchantView } from "@/components/merchant/merchant-view";
 import { SiteHeader } from "@/components/site-header";
 
-export const metadata: Metadata = { title: "For shops: Hedged (Arc testnet demo)" };
+export const metadata: Metadata = { title: "For shops: Wincentive (Arc testnet demo)" };
 
 const WALLET = /^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
 

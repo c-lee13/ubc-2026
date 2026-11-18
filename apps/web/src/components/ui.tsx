@@ -7,8 +7,8 @@ import { publicConfig } from "@/lib/config";
 type Variant = "primary" | "secondary" | "ghost" | "note";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-ink text-paper-raised hover:bg-[#21392c] active:translate-y-px disabled:opacity-40",
-  note: "bg-note text-paper-raised hover:bg-[#175c3b] active:translate-y-px disabled:opacity-40",
+  primary: "bg-ink text-paper hover:bg-white active:translate-y-px disabled:opacity-40",
+  note: "bg-ribbon text-white hover:brightness-110 active:translate-y-px disabled:opacity-40",
   secondary:
     "bg-paper-raised text-ink ring-1 ring-ink/25 hover:ring-ink/60 active:translate-y-px disabled:text-ink-faint",
   ghost: "text-ink hover:bg-ink/5 disabled:text-ink-faint",

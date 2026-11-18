@@ -604,7 +604,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
   return (
     <section aria-label={title}>
       <div className="mb-4 flex items-center gap-3">
-        <span className="font-display grid h-8 w-8 place-items-center rounded-full bg-ink text-[14px] text-paper-raised">
+        <span className="font-display grid h-8 w-8 place-items-center rounded-full bg-ink text-[14px] text-paper">
           {n}
         </span>
         <h3 className="text-[19px] font-bold">{title}</h3>

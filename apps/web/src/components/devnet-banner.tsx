@@ -4,13 +4,13 @@ import { publicConfig } from "@/lib/config";
 export function DevnetBanner() {
   return (
     <>
-      <div className="bg-ink px-4 py-2 text-center text-[13px] text-paper-raised/90">
-        <span className="font-semibold text-paper-raised">Arc testnet demo.</span>{" "}
+      <div className="bg-paper-deep px-4 py-2 text-center text-[13px] text-ink-soft">
+        <span className="font-semibold text-ink">Arc testnet demo.</span>{" "}
         <span className="sm:hidden">Test money. Hedges simulated.</span>
         <span className="max-sm:hidden">
           Every dollar here is test money with no value, and every hedge is{" "}
-          <span className="bg-hatch rounded px-1 font-semibold text-[#f2c879]">simulated</span>: no
-          Gemini order is ever placed.
+          <span className="bg-hatch rounded px-1 font-semibold text-sim">simulated</span>: no Gemini
+          order is ever placed.
         </span>
       </div>
       {publicConfig.walletFixture ? <FixtureBanner /> : null}

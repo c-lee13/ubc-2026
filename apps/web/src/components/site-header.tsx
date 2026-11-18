@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { AccountButton } from "./account";
 import { DevnetBanner } from "./devnet-banner";
-import { Seal } from "./voucher";
 
 type Section = "discover" | "me" | "merchant" | "checkout";
 
@@ -28,9 +27,16 @@ export function SiteHeader({ active, kiosk }: { active?: Section; kiosk?: boolea
     <header>
       <DevnetBanner />
       <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-4 px-5 py-4 md:px-8">
-        <Link href="/" className="flex items-center gap-2.5" aria-label="Hedged, home">
-          <Seal seed="hedged" size={34} />
-          <span className="font-display text-[22px] tracking-[-0.03em]">Hedged</span>
+        <Link href="/" className="flex items-center gap-2" aria-label="Wincentive, home">
+          {/* The logo sits on pure black; screen blending drops that black into the page. */}
+          <img
+            src="/wincentive-mark.png"
+            alt=""
+            width={60}
+            height={42}
+            className="h-[38px] w-auto mix-blend-screen"
+          />
+          <span className="font-display text-[22px] tracking-[-0.03em]">Wincentive</span>
         </Link>
         <div className={`flex items-center gap-1 md:gap-2 ${kiosk ? "hidden" : ""}`}>
           <nav aria-label="Main" className="hidden items-center gap-1 md:flex">

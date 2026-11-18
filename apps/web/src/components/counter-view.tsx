@@ -152,7 +152,7 @@ export function CounterView({ promoId }: { promoId: string }) {
 function OrderRow({ r, item }: { r: PurchaseReceiptDto; item: string }) {
   const refund = r.step === "REFUNDING" || r.step === "REFUND_READY" || r.step === "REFUNDED";
   const tone = r.canServe
-    ? "bg-note text-paper-raised"
+    ? "bg-ribbon text-white"
     : refund
       ? "bg-stamp-soft text-stamp ring-1 ring-stamp/30"
       : "bg-paper-raised text-ink ring-1 ring-ink/15";

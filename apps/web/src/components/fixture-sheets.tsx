@@ -18,7 +18,7 @@ export function FixtureSheets() {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-end bg-ink/50 p-3 sm:place-items-center"
+      className="fixed inset-0 z-50 grid place-items-end bg-black/70 p-3 sm:place-items-center"
       role="dialog"
       aria-modal="true"
       aria-label={sheet.kind === "otp" ? "Fixture email code" : "Fixture approval"}

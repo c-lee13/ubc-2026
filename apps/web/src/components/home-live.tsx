@@ -68,7 +68,9 @@ export function HomeNumbers() {
     <div
       title={`Gemini's live price for the SOL window ending ${clock(next.expiresAt)}: ${cents(next.bestAskMicroUsd)} per $1 contract.`}
     >
-      <p className="font-display flex flex-wrap items-baseline gap-x-4 gap-y-2 text-[44px] leading-none sm:text-[64px]">
+      {/* Phones: a vertical sum (operators in the left column); wider: one line. */}
+      <p className="font-display flex flex-wrap items-baseline gap-x-4 gap-y-2 text-[64px] leading-none max-sm:grid max-sm:grid-cols-[auto_1fr] max-sm:gap-x-3 max-sm:gap-y-4 max-sm:text-[44px]">
+        <span aria-hidden className="sm:hidden" />
         <Term big="$5" label="sale" />
         <span className="text-ink-faint">−</span>
         <Term big={usd(cost).replace(/\.00$/, "")} label="cover" sim />
@@ -91,9 +93,9 @@ function Term({
   note?: boolean;
 }) {
   return (
-    <span className="inline-flex flex-col">
+    <span className="inline-flex flex-col max-sm:flex-row max-sm:items-baseline max-sm:gap-3">
       <span className={note ? "text-note" : undefined}>{big}</span>
-      <span className="mt-2 flex items-baseline gap-1.5 text-[14px] font-semibold tracking-normal text-ink-soft [font-stretch:100%] [font-variation-settings:normal]">
+      <span className="mt-2 flex flex-wrap items-baseline gap-x-1.5 text-[14px] max-sm:mt-0 font-semibold tracking-normal text-ink-soft [font-stretch:100%] [font-variation-settings:normal]">
         {label} {sim ? <SimTag /> : null}
       </span>
     </span>

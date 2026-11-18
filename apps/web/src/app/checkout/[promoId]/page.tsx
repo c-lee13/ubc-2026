@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { CheckoutView } from "@/components/checkout/checkout-view";
 import { SiteHeader } from "@/components/site-header";
 
-export const metadata: Metadata = { title: "Checkout: Hedged (Arc testnet demo)" };
+export const metadata: Metadata = { title: "Checkout: Wincentive (Arc testnet demo)" };
 
 const PURCHASE_KEY = /^0x[0-9a-fA-F]{64}$/;
 

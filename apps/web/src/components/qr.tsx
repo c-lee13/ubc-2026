@@ -1,6 +1,6 @@
 import qrcode from "qrcode-generator";
 
-/** A crisp SVG QR code in the ink color (quiet zone included). */
+/** A crisp SVG QR code, always black on white so any phone camera reads it (quiet zone included). */
 export function QrCode({
   value,
   label,
@@ -29,7 +29,7 @@ export function QrCode({
       shapeRendering="crispEdges"
       className={`block bg-white ${className}`}
     >
-      <path d={d} fill="var(--color-ink)" />
+      <path d={d} fill="#000" />
     </svg>
   );
 }

@@ -283,8 +283,8 @@ function stampFor(r: PurchaseReceiptDto | null): { text: string; tone: StampTone
 }
 
 function headerTone(r: PurchaseReceiptDto | null): string {
-  if (r?.canServe) return "bg-note text-paper-raised";
-  if (r && REFUND_STEPS.has(r.step)) return "bg-stamp text-paper-raised";
+  if (r?.canServe) return "bg-ribbon text-white";
+  if (r && REFUND_STEPS.has(r.step)) return "bg-stamp text-white";
   return "bg-paper-deep text-ink";
 }
 
@@ -351,8 +351,8 @@ function TimelineStep({
     todo: "bg-paper-raised text-ink-faint ring-1 ring-ink/20",
     skipped: "bg-paper-raised text-ink-faint ring-1 ring-ink/15",
     doing: "bg-note-soft text-note ring-1 ring-note/40",
-    done: "bg-note text-paper-raised",
-    failed: "bg-stamp text-paper-raised",
+    done: "bg-note text-paper",
+    failed: "bg-stamp text-white",
   }[state];
   const muted = state === "todo" || state === "skipped";
   return (

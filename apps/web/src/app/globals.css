@@ -1,26 +1,33 @@
 @import "tailwindcss";
 
 /*
- * Design tokens. The product is a dollar refund, so the visual language is currency printing:
- * banknote paper, green-black intaglio ink, dollar-green guilloche, red rubber stamps. Two kinds of
- * truth stay visibly different: violet = a real on-chain record, hatched ochre = a simulated hedge.
+ * Design tokens, taken from the Wincentive logo: a violet to magenta to amber ribbon that ends in a
+ * price tag, on black. The ribbon gradient is the one loud thing (the promo tag, the payoff moments);
+ * everything else is quiet near-black and off-white. Meanings stay fixed: pink = a good outcome,
+ * lavender = a real record on Arc, hatched amber = a simulated hedge, red = stop.
  */
 @theme {
-  --color-paper: #edf0e8;
-  --color-paper-raised: #f8f9f4;
-  --color-paper-deep: #e0e6dc;
-  --color-ink: #14261d;
-  --color-ink-soft: #4a5b51;
-  --color-ink-faint: #7e8b83;
-  --color-rule: #c5cfc4;
-  --color-note: #1d7048;
-  --color-note-soft: #d3e8da;
-  --color-chain: #5b3cc4;
-  --color-chain-soft: #e7e1fb;
-  --color-sim: #9a6510;
-  --color-sim-soft: #f6ead3;
-  --color-stamp: #b8382a;
-  --color-stamp-soft: #f6dfda;
+  --color-paper: #0b0710;
+  --color-paper-raised: #15101d;
+  --color-paper-deep: #221a2d;
+  --color-ink: #f5f0fa;
+  --color-ink-soft: #a99db9;
+  --color-ink-faint: #6f6481;
+  --color-rule: #2d2439;
+  --color-note: #ff4fb0;
+  --color-note-soft: #3b1430;
+  --color-chain: #a98bff;
+  --color-chain-soft: #231a45;
+  --color-sim: #ffb020;
+  --color-sim-soft: #33260b;
+  --color-stamp: #ff4d4f;
+  --color-stamp-soft: #3a1214;
+
+  --color-ribbon-violet: #7a2bff;
+  --color-ribbon-magenta: #e93fd0;
+  --color-ribbon-pink: #ff4f8e;
+  --color-ribbon-orange: #ff6b2c;
+  --color-ribbon-amber: #ffb020;
 
   --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -66,7 +73,8 @@
     font-feature-settings: "tnum" 1;
   }
   ::selection {
-    background: var(--color-note-soft);
+    background: var(--color-ribbon-violet);
+    color: #fff;
   }
   :focus-visible {
     outline: 2.5px solid var(--color-chain);
@@ -113,4 +121,28 @@
     color-mix(in oklab, var(--color-sim) 16%, transparent) 0 1px,
     transparent 1px 7px
   );
+}
+
+/* The logo's ribbon. Fills for the payoff moments; white text stays readable across it. */
+@utility bg-ribbon {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-ribbon-violet) 0%,
+    var(--color-ribbon-magenta) 45%,
+    var(--color-ribbon-pink) 72%,
+    var(--color-ribbon-orange) 100%
+  );
+}
+
+@utility text-ribbon {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-ribbon-violet),
+    var(--color-ribbon-magenta) 40%,
+    var(--color-ribbon-orange) 80%,
+    var(--color-ribbon-amber)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }

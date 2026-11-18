@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { MeView } from "@/components/me-view";
 import { SiteHeader } from "@/components/site-header";
 
-export const metadata: Metadata = { title: "My promos: Hedged (Arc testnet demo)" };
+export const metadata: Metadata = { title: "My promos: Wincentive (Arc testnet demo)" };
 
 export default function MePage() {
   return (
