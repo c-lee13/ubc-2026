@@ -7,7 +7,7 @@ import { orderNumber, usd } from "@/lib/format";
 import { store, usePoll } from "@/lib/hooks";
 import { useWallet } from "@/lib/wallet/session";
 import { AddUsdc } from "./account";
-import { myPurchasesKey, type MyPurchase } from "./checkout/checkout-view";
+import { myPurchasesKey, type MyPurchase } from "@/lib/purchases";
 import { LoginCard } from "./login-card";
 import { Spinner } from "./ui";
 
@@ -70,7 +70,7 @@ export function MeView() {
               return (
                 <li key={m.purchaseKey}>
                   <Link
-                    href={`/checkout/${m.promotionId}?p=${m.purchaseKey}`}
+                    href={`/purchases/${m.purchaseKey}`}
                     className="flex items-center gap-4 rounded-2xl bg-paper-raised px-4 py-3 ring-1 ring-ink/10 hover:ring-ink/40"
                   >
                     <span className="font-display text-[22px]">{orderNumber(m.purchaseKey)}</span>
