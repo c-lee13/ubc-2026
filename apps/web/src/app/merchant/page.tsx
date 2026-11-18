@@ -1,9 +1,24 @@
-// TODO(Dev 1): promotion setup, market selection, quote display, caps/budget, status dashboard.
-export default function MerchantPage() {
+import type { Metadata } from "next";
+import { MerchantView } from "@/components/merchant/merchant-view";
+import { SiteHeader } from "@/components/site-header";
+
+export const metadata: Metadata = { title: "For shops: Hedged (Arc testnet demo)" };
+
+const WALLET = /^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
+
+export default async function MerchantPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ merchant?: string | string[] }>;
+}) {
+  const { merchant } = await searchParams;
+  const viewAs = typeof merchant === "string" && WALLET.test(merchant) ? merchant : null;
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-2xl font-bold">Merchant dashboard</h1>
-      <p className="mt-4 text-neutral-600">Placeholder — not implemented.</p>
-    </main>
+    <>
+      <SiteHeader active="merchant" />
+      <main className="mx-auto max-w-[1240px] px-5 pt-6 pb-20 md:px-8 md:pt-10">
+        <MerchantView viewAs={viewAs} />
+      </main>
+    </>
   );
 }
