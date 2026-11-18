@@ -15,6 +15,8 @@ interface Vm {
     function warp(uint256) external;
     function expectRevert(bytes4) external;
     function expectRevert(bytes calldata) external;
+    function expectRevert() external;
+    function sign(uint256 privateKey, bytes32 digest) external pure returns (uint8 v, bytes32 r, bytes32 s);
     function assume(bool) external;
     function recordLogs() external;
     function getRecordedLogs() external returns (Log[] memory);
