@@ -24,7 +24,7 @@ in the repo untouched; which chain runs is a config choice (`SOLANA_GATEWAY=arc`
 
 Network (verified 2026-11-17 against the live RPC): chain id `5042002`, RPC
 `https://rpc.testnet.arc.io`, explorer `https://explorer.testnet.arc.io`, faucet
-`https://faucet.circle.com` (Arc Testnet). Contract address (Arc testnet, deployed 2026-11-18): **`0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a`** ([explorer](https://explorer.testnet.arc.io/address/0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a)), relayer `0x118318601ff299f6aAA8839B765d5Ca1bFD2EC83`. Live check: `scripts/arc-live.ts` (13/13 on testnet).
+`https://faucet.circle.com` (Arc Testnet). Contract address (Arc testnet, v2, deployed 2026-11-18): **`0xc7fe8ca11b1b5b2260aa7faa638c0ae233b44a39`** ([explorer](https://explorer.testnet.arc.io/address/0xc7fe8ca11b1b5b2260aa7faa638c0ae233b44a39)), relayer `0x118318601ff299f6aAA8839B765d5Ca1bFD2EC83`. Live check: `scripts/arc-live.ts` (22/22 on testnet). Retired v1: `0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a`.
 
 ## Contract (`contracts/arc`)
 
@@ -46,7 +46,7 @@ the same five events. EVM-forced differences:
 Tests: `cd contracts/arc && forge test` (120 tests: unit, fuzz, and invariants for conservation,
 no double claim, and payout-matches-outcome).
 
-## Contract v2 (branch `arc-contract-v2`; NOT deployed: needs a new deploy, new address)
+## Contract v2 (deployed: `0xc7fe8ca11b1b5b2260aa7faa638c0ae233b44a39`)
 
 v1 at `0x6032...c82a` keeps working with this package (every v1 call and event is unchanged; the
 new calls just do not exist there, `isEscrowV2()` tells them apart). Everything below is
