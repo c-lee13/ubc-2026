@@ -17,7 +17,8 @@ import type {
  */
 
 export type LivePhase = "LIVE" | "PAUSED" | "WAITING_FOR_RESULT" | "RESULT_YES" | "RESULT_NO";
-export type PauseReason = "PRICE_ABOVE_THRESHOLD" | "BUDGET_USED" | "NO_LIVE_PRICE";
+export type PauseReason =
+  "PRICE_ABOVE_THRESHOLD" | "PRICE_NEAR_THRESHOLD" | "BUDGET_USED" | "NO_LIVE_PRICE";
 
 export interface LiveStateDto {
   phase: LivePhase;
@@ -25,8 +26,10 @@ export interface LiveStateDto {
   canBuy: boolean;
   liveAskMicroUsd: string | null;
   costPerSale: string | null;
-  thresholdBps: number;
-  budgetRemaining: string;
+  /** Owner view only (the shop's own dashboard); public responses omit it. */
+  thresholdBps?: number;
+  /** Owner view only. */
+  budgetRemaining?: string;
 }
 
 export interface PromotionDto {
@@ -39,8 +42,10 @@ export interface PromotionDto {
   outcomeLabel: string;
   geminiMarketId: string;
   depositDeadline: number;
-  maxYesPriceMicroUsd: string;
-  hedgeBudget: string;
+  /** Owner view only: public responses hide the shop's max cost. */
+  maxYesPriceMicroUsd?: string;
+  /** Owner view only. */
+  hedgeBudget?: string;
   onChainState: OnChainPromoState;
   live: LiveStateDto | null;
 }
@@ -59,6 +64,8 @@ export interface PromoStatsDto {
 
 export interface DashboardDto {
   merchant: { pubkey: string; shopName: string; location: string; createdAt: string } | null;
+  /** "owner" when X-User-Token is the shop's own Circle login (budget and max cost included). */
+  viewer?: "owner" | "public";
   simulatedHedges: true;
   promotions: (PromotionDto & { stats: PromoStatsDto })[];
 }
@@ -327,7 +334,7 @@ export function createApi(
         post({ promoPda }),
       ),
     dashboard: (merchant: string) =>
-      request<DashboardDto>(`/api/merchants/${id(merchant)}/dashboard`),
+      request<DashboardDto>(`/api/merchants/${id(merchant)}/dashboard`, { auth: true }),
     purchase: (purchaseKey: string) =>
       request<PurchaseReceiptDto>(`/api/purchases/${id(purchaseKey)}`),
 
@@ -409,6 +416,7 @@ export function isMissingRoute(err: unknown): boolean {
 
 const PAUSE_TEXT: Record<PauseReason, string> = {
   PRICE_ABOVE_THRESHOLD: "the market price is above what this shop pays to cover a refund",
+  PRICE_NEAR_THRESHOLD: "the market price is right at the shop's limit",
   BUDGET_USED: "the shop has used its budget for covering refunds",
   NO_LIVE_PRICE: "no one is selling this outcome on Gemini right now",
 };

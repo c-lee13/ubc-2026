@@ -782,6 +782,9 @@ function liveState(promo: FxPromo, ask: string | null): LiveStateDto {
   });
   if (ask === null || costPerSale === null) return pause("NO_LIVE_PRICE");
   if (BigInt(ask) > cap) return pause("PRICE_ABOVE_THRESHOLD");
+  // Same 2-cent buy buffer as apps/api (a fifth of the cap when that is smaller).
+  const buffer = cap / 5n < 20_000n ? cap / 5n : 20_000n;
+  if (BigInt(ask) > cap - buffer) return pause("PRICE_NEAR_THRESHOLD");
   if (costPerSale > budgetRemaining) return pause("BUDGET_USED");
   return { ...base, phase: "LIVE", pauseReason: null, canBuy: true };
 }
