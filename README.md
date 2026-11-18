@@ -1,61 +1,44 @@
-# Hedged Refund Promotions
+# Wincentive: hedged refund promos
 
-## Repository structure
+A shop runs a promo like "buy a $5 coffee; if Texas wins, it's free." Each sale is hedged on a
+Gemini prediction market, so the promo costs the shop a fixed amount (odds × refund) whichever way
+the game goes. The customer logs in with an email code, pays once in USDC, and gets the $5 back
+automatically if the outcome happens.
 
-```text
-apps/web              Dev 1 — Next.js (App Router) + Tailwind + Solana wallet adapter
-programs/escrow       Dev 2 — Anchor/Rust escrow program (+ idl/ export)
-packages/solana       Dev 3 — Solana SDK: PDAs, tx builders, QuickNode listeners, verification, relayer helpers
-apps/api              Dev 4 — Fastify API, Gemini adapter, hedge simulation, Supabase, workers
-supabase/migrations   Dev 4 — PostgreSQL migrations
-packages/shared       Shared TypeScript DTOs, statuses, SolanaServerGateway interface (all, via PR)
-tests/                Integration / scenario tests
-docs/                 architecture, interfaces, ownership, setup
-```
+Built on **Arc** (Circle's stablecoin L1) with **Circle** email-login wallets, **Gemini** prediction
+market data, **QuickNode** (RPC and Streams) and **Supabase**. Hedges are simulated against Gemini's
+live order book; no Gemini order is ever placed.
 
-See [developer ownership](docs/developer-ownership.md) for boundaries and dependency direction.
+## Live on Arc testnet
 
-Architecture is finalized: one pooled vault per promotion + a Purchase PDA per deposit, on-chain
-`mark_hedged` by a single relayer, customer-pulled refunds after `cancel_unhedged`. Specs:
-[interfaces](docs/interfaces.md) (PDAs, events, gateway) and [workflow](docs/workflow.md)
-(state machines, races).
+| What                | Value                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Escrow (v2)         | [`0xc7fe8ca11b1b5b2260aa7faa638c0ae233b44a39`](https://explorer.testnet.arc.io/address/0xc7fe8ca11b1b5b2260aa7faa638c0ae233b44a39) |
+| USDC                | `0x3600000000000000000000000000000000000000` (Arc's native USDC, ERC-20 interface)                                                 |
+| Chain               | id `5042002`, RPC `https://rpc.testnet.arc.io`                                                                                     |
+| Retired escrow (v1) | `0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a`                                                                                       |
 
-## Quick start
+## How it works
 
-```bash
-pnpm install
-cp .env.example .env     # fill in as needed; never commit .env
-pnpm dev:web             # http://localhost:3000
-pnpm dev:api             # http://localhost:4000/health
-```
+**Customer**
 
-| Command             | What it does                                   |
-| ------------------- | ---------------------------------------------- |
-| `pnpm dev:web`      | Next.js dev server                             |
-| `pnpm dev:api`      | Fastify dev server (tsx watch)                 |
-| `pnpm build`        | Build all workspaces                           |
-| `pnpm typecheck`    | TypeScript checks for all workspaces           |
-| `pnpm lint`         | ESLint across the repo                         |
-| `pnpm format`       | Prettier write (`format:check` in CI)          |
-| `anchor build`      | Build the escrow program (see `docs/setup.md`) |
-| `anchor test`       | Escrow localnet tests (~25 min)                |
-| `pnpm escrow:check` | Escrow deployment-readiness check              |
+1. Logs in with an email code (Circle user-controlled wallet; no seed phrase, no extension).
+2. Pays with one approval: signs a USDC authorization for exactly the promo price. Our relayer
+   submits it to the escrow and pays the gas.
+3. The backend prices the hedge from Gemini's live order book. If it fits the shop's limits, the
+   relayer marks the purchase hedged on-chain and the shop can serve the item. If not, the payment
+   is cancelled and refunded automatically.
+4. After the market's official Gemini result, the relayer resolves the promo. YES: the customer's
+   money is sent back automatically. NO: the shop is paid automatically.
 
-## Status
+**Shop:** creates a promo (item, price, Gemini market, maximum cost, hedge budget, deposit
+deadline), publishes it on-chain from its own wallet, and sees each sale and its hedge on a counter
+feed.
 
-- **Escrow program (Dev 2): implemented.** 12 Anchor instructions with localnet tests
-  (`programs/escrow/docs.md`); not yet deployed to Devnet.
-- **Backend (Dev 4): implemented** in `apps/api` with tests: read-only Gemini adapter (live quotes,
-  order books, official settlement, 5-minute crypto windows, per-game line picker), simulated hedge
-  model, purchase orchestrator and workers (CLAUDE.md §5.1 race handling), promotions directory,
-  merchant dashboard and receipts, Supabase store (`supabase/migrations`). Routes:
-  `docs/interfaces.md` §6. `pnpm --filter @hedged/api test` (in-memory) and `test:db` (Supabase).
-- **Not yet:** the real Devnet `SolanaServerGateway` (Dev 3; until then the backend's workers run only
-  on an in-memory fake chain with `SOLANA_GATEWAY=fake`) and the web UI (Dev 1).
-- **Arc version (branch `arc`, experimental):** `contracts/arc` (Solidity port of the escrow, 91
-  Foundry tests) + `packages/arc` (SDK and an Arc `SolanaServerGateway`; `SOLANA_GATEWAY=arc`).
-  Tested on a local chain incl. the backend's real workers; not deployed to Arc testnet yet.
-  See `docs/arc-vs-solana.md`.
+**Backend (`apps/api`):** reads Gemini, simulates and records hedges, runs the purchase state
+machine and workers, relays on-chain actions, and stores everything in Supabase. It watches the
+escrow through QuickNode Streams (webhook) or RPC polling, and verifies every event over RPC before
+acting on it.
 
 ## Economic design
 
@@ -93,7 +76,8 @@ does not take payment. The line picker suggests, for a game, the most likely out
 threshold (e.g. "wins by 14+" when "wins" is too expensive).
 
 **What is real and what is simulated.** Real: Gemini prices, order books and official settlement
-(read-only, public endpoints); escrow transfers on Solana Devnet in a valueless mock stablecoin.
+(read-only, public endpoints); escrow payments and payouts on Arc testnet in testnet USDC (no
+real value).
 Simulated: buying and settling the Gemini contracts, which are recorded in an off-chain ledger and
 labelled `simulated: true` everywhere. No Gemini order is ever placed.
 
@@ -103,11 +87,11 @@ labelled `simulated: true` everywhere. No Gemini order is ever placed.
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Price moves before or during a sale                | Each sale is quoted live; above the merchant's threshold the hedge fails and the deposit is refunded before the item is handed over.                                 |
 | Thin order book / partial fill                     | A partial fill is never treated as covered: the simulated fill is released and the customer refunded.                                                                |
-| Payment and hedge are not atomic                   | Purchase is `PENDING` until `mark_hedged` is confirmed on-chain; the item is served only after that (`canServe`). Failures cancel and refund.                        |
+| Payment and hedge are not atomic                   | Purchase is `PENDING` until the relayer's "hedged" mark is confirmed on-chain; the item is served only after that (`canServe`). Failures cancel and refund.          |
 | Customer self-cancels while the hedge is in flight | New hedges stop at 70% of the on-chain cancel window; if the cancel still wins, the hedge is voided and its budget released.                                         |
 | Buying after the outcome is partly known           | Sports promos stop selling at kickoff; 5-minute crypto windows stop 5 minutes before the reference price is captured.                                                |
 | Wrong or premature result                          | Only Gemini's official settlement (`resolutionSide`) of the exact market is used; never prices near 0/1 or live scores. Resolution happens once, after the deadline. |
-| Cancelled or voided game                           | No automatic resolution; flagged for an operator.                                                                                                                    |
+| Cancelled or voided game                           | No automatic resolution; flagged for an operator. (Escrow v2 has a VOID outcome; the backend does not use it yet.)                                                   |
 | Budget overrun                                     | Budget is reserved atomically per hedge in the database; a sale that does not fit is refunded.                                                                       |
 | Fees and slippage                                  | Fill price walks the visible book; Gemini fees are a configurable parameter (0 = not modelled).                                                                      |
 | Trusted relayer                                    | A single backend relayer can resolve and cancel, but funds can only move to the recorded customer or merchant. A decentralised oracle is out of scope.               |
@@ -116,11 +100,57 @@ labelled `simulated: true` everywhere. No Gemini order is ever placed.
 liquidity), custody and settlement of real funds, promotional and gaming regulations by
 jurisdiction, KYC/AML, and card/fiat checkout.
 
-**Solana infrastructure (Dev 3): implemented** — `packages/solana`: PDAs, reads, wallet transaction
-builders, the relayer-signed `SolanaServerGateway`, verified event subscriptions (replay, dedupe,
-redelivery) and QuickNode RPC + **Streams** (filter, HMAC-verified webhook). Tested against the deployed
-Devnet binary on a local validator (`pnpm --filter @hedged/solana test:localnet`); see
-[packages/solana/README.md](packages/solana/README.md), incl. the Stream configuration.
+## Repository
 
-Docs: [architecture](docs/architecture.md) · [interfaces](docs/interfaces.md) · [workflow](docs/workflow.md) ·
-[ownership](docs/developer-ownership.md) · [setup](docs/setup.md)
+```text
+apps/api              Fastify API: Gemini adapter, hedge simulation, orchestrator + workers,
+                      Circle wallet routes, Supabase store
+apps/web              Next.js web app (mobile-first)
+contracts/arc         HedgedEscrow.sol (Solidity, Foundry tests)
+packages/arc          Arc SDK + relayer gateway (viem), QuickNode Streams filter and webhook
+packages/shared       Shared TypeScript types and the gateway interface
+supabase/migrations   PostgreSQL schema
+programs/escrow,      Solana version (Anchor program + SDK), kept as a fallback on `main`
+packages/solana
+docs/                 architecture, interfaces, workflow, frontend API, setup
+```
+
+## Quick start
+
+```bash
+pnpm install
+cp .env.example .env     # fill in; never commit .env
+pnpm dev:api             # http://localhost:4000/health
+pnpm dev:web             # http://localhost:3000
+```
+
+Key settings for the Arc version (`.env.example` documents the rest):
+
+| Variable                                    | Value                                                  |
+| ------------------------------------------- | ------------------------------------------------------ |
+| `SOLANA_GATEWAY`                            | `arc` (runs the relayer; needs `ARC_RELAYER_KEY_PATH`) |
+| `ARC_ESCROW_ADDRESS`                        | the v2 escrow above                                    |
+| `CIRCLE_API_KEY`, `CIRCLE_APP_ID`           | Circle testnet key and app id (email login)            |
+| `ARC_EVENT_SOURCE`                          | `poll`, `websocket`, or `streams` (QuickNode webhook)  |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase project (in-memory store if unset)            |
+
+At startup the API logs which escrow version it found: v2 with the relayer gives one-tap checkout
+and automatic payouts; otherwise it falls back to approve + deposit and manual claims.
+
+| Command                             | What it does                 |
+| ----------------------------------- | ---------------------------- |
+| `pnpm --filter @hedged/api test`    | API tests (in-memory store)  |
+| `pnpm --filter @hedged/api test:db` | Store tests against Supabase |
+| `pnpm --filter @hedged/arc test`    | Arc SDK tests                |
+| `forge test` (in `contracts/arc`)   | Escrow contract tests        |
+| `pnpm typecheck` / `pnpm lint`      | Checks across the repo       |
+
+## Not done
+
+- VOID results (game cancelled): the v2 contract supports them; the backend does not resolve VOID yet.
+- Real Gemini execution, real funds, KYC/AML and promo regulations (see production blockers above).
+- The relayer is a single trusted backend key. It can only send funds to the recorded customer or shop.
+
+Docs: [frontend API](docs/FRONTEND-API.md) · [email wallets](docs/email-wallets.md) ·
+[Arc vs Solana](docs/arc-vs-solana.md) · [architecture](docs/architecture.md) ·
+[interfaces](docs/interfaces.md) · [workflow](docs/workflow.md) · [setup](docs/setup.md)
