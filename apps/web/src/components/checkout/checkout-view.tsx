@@ -93,7 +93,10 @@ export function CheckoutView({
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-x-14">
-      <div className="min-w-0 overflow-hidden lg:overflow-visible">
+      {/* After paying, the receipt is the whole phone screen; the tag stays beside it on wide screens. */}
+      <div
+        className={`min-w-0 overflow-hidden lg:overflow-visible ${purchase ? "max-lg:hidden" : ""}`}
+      >
         <Voucher
           seed={p.promoPda ?? p.id}
           shopName={p.shop.name}
@@ -118,7 +121,7 @@ export function CheckoutView({
           <>
             <Receipt purchaseKey={purchase} promo={p} onStamp={setStamp} />
             {p.live?.canBuy ? (
-              <Button variant="secondary" size="sm" onClick={newPurchase}>
+              <Button variant="ghost" size="sm" onClick={newPurchase} className="max-lg:hidden">
                 Buy another
               </Button>
             ) : null}
@@ -294,26 +297,29 @@ function PayPanel({
         ) : (
           <>
             {short && !blocker ? (
-              <Notice tone="warn" title={`Balance ${usd(s!.usdcBalance)}`}>
-                <div className="mt-1">
-                  <AddUsdc compact onAdded={status.refresh} />
-                </div>
-              </Notice>
+              <div className="space-y-3">
+                <p className="text-[15px] text-ink-soft">
+                  Balance <strong className="text-ink">{usd(s!.usdcBalance)}</strong>
+                </p>
+                <AddUsdc primary onAdded={status.refresh} />
+              </div>
             ) : null}
-            <Button
-              size="lg"
-              className="h-16 w-full text-[19px]"
-              onClick={pay}
-              busy={busy}
-              disabled={Boolean(blocker || short || !s)}
-              title={
-                s?.needsApproval
-                  ? "First payment: approve once to allow payments, then approve the $5."
-                  : `Balance ${usd(s?.usdcBalance ?? w.wallet!.usdcBalance)}`
-              }
-            >
-              Pay {usd(promo.offerAmount)} for a {promo.itemName.toLowerCase()}
-            </Button>
+            {short && !blocker ? null : (
+              <Button
+                size="lg"
+                className="h-16 w-full text-[19px]"
+                onClick={pay}
+                busy={busy}
+                disabled={Boolean(blocker || short || !s)}
+                title={
+                  s?.needsApproval
+                    ? "First payment: approve once to allow payments, then approve the $5."
+                    : `Balance ${usd(s?.usdcBalance ?? w.wallet!.usdcBalance)}`
+                }
+              >
+                Pay {usd(promo.offerAmount)} for a {promo.itemName.toLowerCase()}
+              </Button>
+            )}
             {busy || steps.pay ? <Progress steps={progress} /> : null}
           </>
         )}

@@ -17,7 +17,7 @@ import { useNowSeconds, usePoll } from "@/lib/hooks";
 import { useWallet } from "@/lib/wallet/session";
 import { LoginCard } from "../login-card";
 import { failureText } from "../merchant/ledger";
-import { Button, ButtonLink, ChainLink, Notice, SimTag, Spinner } from "../ui";
+import { Button, ChainLink, Notice, SimTag, Spinner } from "../ui";
 import type { StampTone } from "../voucher";
 
 type StepState = "todo" | "doing" | "done" | "failed" | "skipped";
@@ -194,11 +194,6 @@ export function Receipt({
 
       <footer className="space-y-2 border-t border-ink/10 px-5 py-3 text-[12.5px] text-ink-soft sm:px-6">
         {receipt.error && !notYet ? <p>{describe(receipt.error).title}: retrying.</p> : null}
-        <div className="flex flex-wrap items-center gap-3">
-          <ButtonLink size="sm" variant="ghost" href="/me">
-            My promos
-          </ButtonLink>
-        </div>
         {r ? <Proof r={r} /> : null}
       </footer>
     </section>

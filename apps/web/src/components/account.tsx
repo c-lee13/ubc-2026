@@ -93,7 +93,16 @@ function AccountMenu({ onDone }: { onDone: () => void }) {
  * Test USDC: Circle's faucet through our API; when Circle refuses (about one drip a day per
  * wallet), point to faucet.circle.com with the address ready to paste.
  */
-export function AddUsdc({ compact, onAdded }: { compact?: boolean; onAdded?: () => void }) {
+export function AddUsdc({
+  compact,
+  primary,
+  onAdded,
+}: {
+  compact?: boolean;
+  /** The screen's one action: full-width primary button. */
+  primary?: boolean;
+  onAdded?: () => void;
+}) {
   const w = useWallet();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -123,7 +132,13 @@ export function AddUsdc({ compact, onAdded }: { compact?: boolean; onAdded?: () 
 
   return (
     <div className="space-y-2">
-      <Button size={compact ? "sm" : "md"} variant="secondary" busy={busy} onClick={drip}>
+      <Button
+        size={primary ? "lg" : compact ? "sm" : "md"}
+        variant={primary ? "primary" : "secondary"}
+        className={primary ? "h-16 w-full text-[19px]" : undefined}
+        busy={busy}
+        onClick={drip}
+      >
         Add free test dollars
       </Button>
       {ok ? <p className="text-[13px] text-note">On its way.</p> : null}

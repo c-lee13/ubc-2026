@@ -22,9 +22,12 @@ export function DevnetBanner() {
 function FixtureBanner() {
   return (
     <div className="border-b-2 border-stamp bg-stamp-soft px-4 py-2 text-center text-[13px] text-stamp">
-      <span className="font-bold">Fixture mode, dev only.</span> Email login, approvals and the
-      wallet, checkout and payout responses are mocked in this browser. Nothing reaches Circle or
-      Arc; prices and results are live Gemini data.
+      <span className="font-bold">Fixture mode, dev only.</span>{" "}
+      <span className="sm:hidden">Circle and Arc mocked.</span>
+      <span className="max-sm:hidden">
+        Email login, approvals and the wallet, checkout and payout responses are mocked in this
+        browser. Nothing reaches Circle or Arc; prices and results are live Gemini data.
+      </span>
     </div>
   );
 }

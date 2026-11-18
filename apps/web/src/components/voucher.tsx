@@ -63,7 +63,9 @@ export function Voucher(props: VoucherProps) {
       className={`@container ${props.compact ? "w-full max-sm:mb-[-12.5%] max-sm:w-[125%] max-sm:origin-top-left max-sm:scale-[0.8]" : "w-full"} ${props.tilt ? "md:-rotate-[2.5deg]" : ""} ${props.className ?? ""}`}
       aria-label={`Promo tag: your ${dollars} back if ${props.condition}`}
     >
-      <div className="relative aspect-[400/540] text-ink drop-shadow-[0_26px_44px_rgba(122,43,255,0.3)] @min-[420px]:aspect-[2/1]">
+      <div
+        className={`relative aspect-[400/540] text-ink drop-shadow-[0_26px_44px_rgba(122,43,255,0.3)] @min-[420px]:aspect-[2/1] ${props.compact ? "max-sm:drop-shadow-none" : ""}`}
+      >
         <TagShape id={`${id}-w`} shape={WIDE} className="hidden @min-[420px]:block" />
         <TagShape id={`${id}-t`} shape={TALL} className="@min-[420px]:hidden" />
 

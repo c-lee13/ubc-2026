@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { DEMO_PURCHASE_AMOUNT } from "@hedged/shared";
 import { api } from "@/lib/client";
 import { cents, clock, conditionText, usd } from "@/lib/format";
@@ -12,13 +13,17 @@ export function HomeLive() {
   const promos = usePoll(() => api.promotions(), 15_000);
   const live = promos.data?.promotions.find((p) => p.live?.canBuy);
   return (
-    <div className="mt-9 flex flex-wrap gap-3">
-      <ButtonLink href="/merchant" size="lg">
-        Run a promo
-      </ButtonLink>
-      <ButtonLink href={live ? `/checkout/${live.id}` : "/discover"} size="lg" variant="secondary">
+    <div className="mt-10 flex flex-col items-start gap-5">
+      <ButtonLink
+        href={live ? `/checkout/${live.id}` : "/discover"}
+        size="lg"
+        className="h-16 w-full px-10 text-[19px] sm:w-auto"
+      >
         {live ? `Buy a ${live.itemName.toLowerCase()}` : "Find a promo"}
       </ButtonLink>
+      <Link href="/merchant" className="text-[15px] font-semibold text-ink-soft hover:text-ink">
+        Run a promo for your shop
+      </Link>
     </div>
   );
 }

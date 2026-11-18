@@ -39,9 +39,16 @@ export function MeView() {
   return (
     <div className="grid grid-cols-1 gap-8 md:grid-cols-[360px_minmax(0,1fr)]">
       <section className="space-y-3 self-start rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10">
-        <p className="text-[14px] text-ink-soft">Your balance</p>
+        <p className="truncate text-[14px] text-ink-soft">{w.email}</p>
         <p className="font-display text-[52px] leading-none">{usd(w.wallet!.usdcBalance)}</p>
         <AddUsdc onAdded={() => void w.refreshWallet()} />
+        <button
+          type="button"
+          onClick={() => w.logout()}
+          className="text-[14px] font-semibold text-ink-soft hover:text-ink"
+        >
+          Log out
+        </button>
       </section>
 
       <section aria-labelledby="mine" className="space-y-3">

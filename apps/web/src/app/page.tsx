@@ -6,7 +6,7 @@ export default function Home() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-[1240px] px-5 pb-16 md:px-8">
-        <section className="pt-4 pb-12 md:pt-8">
+        <section className="pt-6 pb-14 md:pt-8">
           <h1 className="font-display text-[42px] leading-[0.95] sm:text-[64px] lg:text-[88px] xl:text-[96px]">
             <span className="block">Sell the promise.</span>
             <span className="block">Buy the odds.</span>
@@ -23,7 +23,6 @@ export default function Home() {
                 <Arrow />
                 <span className="text-note">$5.00</span>
               </p>
-              <p className="mt-1 text-[14px] text-ink-soft">All a customer ever sees.</p>
               <HomeLive />
             </div>
             <div className="relative lg:-mt-4">
@@ -32,7 +31,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section aria-labelledby="how" className="border-t border-ink/15 pt-8">
+        <section aria-labelledby="how" className="border-t border-ink/15 pt-10">
           <h2 id="how" className="sr-only">
             How the money moves
           </h2>
