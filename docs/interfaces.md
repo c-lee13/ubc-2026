@@ -258,8 +258,12 @@ and dashboard data is derivable from public chain data and public Gemini prices.
   timestamps rejected, gzip accepted; signatures go to the gateway for on-chain verification.
 - **Email-login wallets + Arc checkout** (Circle; `X-User-Token` header): `POST /api/wallet/email-login`,
   `POST /api/wallet/init`, `GET /api/wallet`, `GET /api/checkout/:promoId/status`,
-  `POST /api/checkout/:promoId/approve`, `POST /api/checkout/:promoId/deposit`, `POST /api/wallet/faucet`.
-  Flow and errors: `docs/email-wallets.md`.
+  `POST /api/checkout/:promoId/approve`, `POST /api/checkout/:promoId/deposit`, `POST /api/wallet/faucet`,
+  `POST /api/promotions/:id/initialize` (shop publishes a draft), `POST /api/purchases/:key/claim-refund`,
+  `POST /api/purchases/:key/cancel-expired`, `POST /api/purchases/claim-merchant` (contract v1 claims).
+  Flow and errors: `docs/FRONTEND-API.md` (full frontend reference) and `docs/email-wallets.md`.
+- `GET /api/promotions/:id/purchases` → counter screen feed, newest first, with `orderCode` and `canServe`.
+- `GET /api/purchases?customer=<address>` → a customer's purchases across promos, newest first.
 - `GET /api/desk/demo?event=<moneyline ticker>&a=<sales side 1>&b=<sales side 2>&price=<base units>` →
   what the desk would do for two hypothetical shops on opposite sides of a real game, priced live.
   Nothing stored; `scenario: "demo"`, `simulated: true`.

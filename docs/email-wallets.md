@@ -1,5 +1,8 @@
 # Email-login wallets + Arc checkout (frontend guide)
 
+> The complete frontend reference (shop publish, counter screen, claims, all shapes) is
+> `docs/FRONTEND-API.md`. This page covers login and checkout only.
+
 Customers and shops log in with an email code; Circle creates an Arc wallet behind the scenes. The
 backend holds the Circle API key; the browser only holds Circle's per-user `userToken`, sent to our
 API as the `X-User-Token` header. Every money-moving step returns a Circle `challengeId` that the

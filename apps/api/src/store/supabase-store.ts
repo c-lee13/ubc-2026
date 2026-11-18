@@ -321,6 +321,16 @@ export class SupabaseStore implements Store {
     return mustRows("listPurchases", data, error).map(toPurchase);
   }
 
+  async listPurchasesByCustomer(customer: string, limit: number): Promise<PurchaseRow[]> {
+    const { data, error } = await this.db
+      .from("purchases")
+      .select(PURCHASE_COLS)
+      .eq("customer", customer)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    return mustRows("listPurchasesByCustomer", data, error).map(toPurchase);
+  }
+
   async transitionPurchase(
     pda: string,
     from: readonly PurchaseRow["status"][],
