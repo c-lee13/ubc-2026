@@ -14,6 +14,23 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-18 11:52 EST · Dev 3 Dylan (Claude) · branch `zahin-arc`
+
+- Zahin's screens on the prototype's Arc + Circle wiring, for Zahin to review; not merged. Base:
+  `frontend-prototype-unsteered`; design from `origin/zahin` (1bf6035). No Solana code left in apps/web.
+- Live-wired: home preview (selling promo, else Zahin's sample), `/checkout/[promoId]` (email login, approve +
+  deposit), `/purchases/[key]` (live receipt, refund claim), `/merchant` (dashboard), `/merchant/new` (market
+  picker, live quote, publish), `/merchant/claims` (settlements, merchant claim). Kept and restyled: `/discover`,
+  `/me`, `/counter/[promoId]`. No-backend mode is still `NEXT_PUBLIC_WALLET_FIXTURE=1`.
+- Needs from Dev 4 (backend routes missing; the UI calls them and says "not on this server yet" on 404):
+  - `POST /api/promotions/:id/initialize` (shop approves creating the promo on Arc)
+  - `GET /api/promotions/:id/purchases` (claims page, counter feed; falls back to Arc reads if
+    `NEXT_PUBLIC_ARC_ESCROW_ADDRESS` is set)
+  - `POST /api/purchases/:id/claim-refund` and `POST /api/purchases/claim-merchant`
+  - No promo name/description fields on the API, so the shop name and item stand in for them.
+- Checked: web typecheck, repo lint, format, `next build`; every route 200; headless fixture run (publish, pay,
+  receipt, NO resolution, merchant claim) with 0 console errors.
+
 ### 2026-11-18 ~04:40 ET · Dev 3 Dylan · branch `arc`
 
 - DEPLOYED HedgedEscrow v1 to Arc testnet: `ARC_ESCROW_ADDRESS=0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a`
