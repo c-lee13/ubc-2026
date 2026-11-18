@@ -14,22 +14,6 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
-### 2026-11-18 ~04:50 ET · Dev 3 Dylan (frontend help for Dev 1) · branch `frontend-dylan` (local only)
-
-- Built `apps/web` on `arc` following `docs/email-wallets.md`: home, Discover, checkout (Circle email
-  login, status check, one-time approve, deposit, receipt with order number), My promos + balance,
-  counter screen (QR + order feed, "Serve" only when `canServe`), shop portal.
-- Brand: Wincentive. Logo in `apps/web/public/` (also the favicon); palette from the logo, tokens in
-  `apps/web/src/app/globals.css`.
-- Web env: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CIRCLE_APP_ID`; optional `NEXT_PUBLIC_ARC_ESCROW_ADDRESS`.
-  `NEXT_PUBLIC_WALLET_FIXTURE=1` = dev-only labeled mock of Circle and the wallet/checkout routes
-  (dropped from production builds).
-- Blocked: Circle answers "SMTP server configuration is not found" on email-login, so email codes need
-  the SMTP setting in Circle's developer console.
-- Needs from Dev 4 (routes the UI already calls): `POST /api/promotions/:id/initialize`,
-  `GET /api/promotions/:id/purchases`, `POST /api/purchases/:key/claim-refund`,
-  `POST /api/purchases/claim-merchant`, `POST /api/purchases/:key/cancel-expired`.
-
 ### 2026-11-18 ~04:40 ET · Dev 3 Dylan · branch `arc`
 
 - DEPLOYED HedgedEscrow v1 to Arc testnet: `ARC_ESCROW_ADDRESS=0x6032a8339ea429f7655a7dcecbfff50ba5d5c82a`
