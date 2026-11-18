@@ -119,6 +119,20 @@ export function Ledger({
     .filter((r) => HELD.has(r.onChainState))
     .reduce((s, r) => s + BigInt(r.amount), 0n);
   const noList = lists.data && Object.values(lists.data).some((l) => l === null);
+  // Exact, from escrow states: refund-ready purchases plus covered ones of promos that resolved yes.
+  const owedNow = active.reduce((sum, p) => {
+    const rows = lists.data?.[p.id]?.rows ?? [];
+    return (
+      sum +
+      rows
+        .filter(
+          (r) =>
+            r.onChainState === "Cancelled" ||
+            (r.onChainState === "Hedged" && p.onChainState === "ResolvedYes"),
+        )
+        .reduce((s2, r) => s2 + BigInt(r.amount), 0n)
+    );
+  }, 0n);
 
   return (
     <div className="space-y-6">
@@ -133,32 +147,38 @@ export function Ledger({
         </Notice>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-5 rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10 md:grid-cols-4 md:p-6">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-6 rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10 md:grid-cols-4 md:p-6">
         <Stat
-          label={
-            <>
-              Held in escrow <ChainTag />
-            </>
-          }
+          label="Held in escrow"
           value={lists.data && !noList ? usd(escrowHeld) : "–"}
+          tag={<ChainTag />}
         />
         <Stat
           label="Sales"
           value={totals.purchases}
-          sub={`${totals.hedged} covered, ${totals.refunded} refunded`}
+          title={`${totals.hedged} covered, ${totals.refunded} refunded`}
         />
         <Stat
           label="Cost so far"
           value={usd(totals.premium)}
-          sub={`${totals.contracts} contracts`}
-          sim
+          title={`${totals.contracts} YES contracts`}
+          tag={<SimTag />}
         />
-        <Stat
-          label="Owed if it happens"
-          value={usd(totals.hedgedSales)}
-          sub={`Covered by ${totals.contracts} contracts`}
-          sim
-        />
+        {totals.hedgedSales !== 0n ? (
+          <Stat
+            label="Owed if it happens"
+            value={usd(totals.hedgedSales)}
+            title={`Covered by ${totals.contracts} contracts`}
+            tag={<SimTag />}
+          />
+        ) : (
+          <Stat
+            label="Owed to buyers"
+            value={lists.data && !noList ? usd(owedNow) : "–"}
+            title="Refunds buyers can claim right now"
+            tag={<ChainTag />}
+          />
+        )}
       </div>
 
       {noList ? (
@@ -374,7 +394,7 @@ function PromoRow({
             <Mini label="Cost so far" value={usd(promo.stats.premium)} sim />
             <Mini
               label="Budget left"
-              value={promo.live ? usd(promo.live.budgetRemaining) : "–"}
+              value={promo.live?.budgetRemaining ? usd(promo.live.budgetRemaining) : "–"}
               sim
             />
             <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
@@ -448,10 +468,12 @@ function PhaseBadge({
           {badge("text-sim", "Paused")}
           <p className="mt-1 text-[13px] text-ink-soft">
             {live.pauseReason === "PRICE_ABOVE_THRESHOLD"
-              ? `Market ${cents(live.liveAskMicroUsd)} is over your ${cents(promo.maxYesPriceMicroUsd)} limit`
-              : live.pauseReason === "BUDGET_USED"
-                ? "Cover budget used up"
-                : "No live price on Gemini"}
+              ? `Market ${cents(live.liveAskMicroUsd)} is over your${promo.maxYesPriceMicroUsd ? ` ${cents(promo.maxYesPriceMicroUsd)}` : ""} limit`
+              : live.pauseReason === "PRICE_NEAR_THRESHOLD"
+                ? `Market ${cents(live.liveAskMicroUsd)} is at your limit`
+                : live.pauseReason === "BUDGET_USED"
+                  ? "Cover budget used up"
+                  : "No live price on Gemini"}
           </p>
         </div>
       );
@@ -468,9 +490,7 @@ function PhaseBadge({
       return (
         <div>
           {badge("text-note", "It happened")}
-          <p className="mt-1 text-[13px] text-ink-soft">
-            Buyers claim refunds; your cover paid out
-          </p>
+          <p className="mt-1 text-[13px] text-ink-soft">Refunds open</p>
         </div>
       );
     case "RESULT_NO":

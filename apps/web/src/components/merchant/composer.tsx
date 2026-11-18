@@ -468,19 +468,21 @@ export function Composer({ onPublished }: { onPublished: () => void }) {
                 <LoginCard title="Log in as the shop" />
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                size="lg"
-                onClick={publish}
-                busy={busy}
-                disabled={!signedIn || !!formError || check.data?.ok === false}
-              >
-                Publish promo
-              </Button>
-              {formError && signedIn ? (
-                <span className="text-[14px] text-ink-soft">{formError}</span>
-              ) : null}
-            </div>
+            {signedIn ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  size="lg"
+                  onClick={publish}
+                  busy={busy}
+                  disabled={!!formError || check.data?.ok === false}
+                >
+                  Publish promo
+                </Button>
+                {formError && signedIn ? (
+                  <span className="text-[14px] text-ink-soft">{formError}</span>
+                ) : null}
+              </div>
+            ) : null}
             {steps.check !== "todo" ? <Progress steps={progress} /> : null}
             {problem ? (
               <Notice tone="error" title={problem.title}>

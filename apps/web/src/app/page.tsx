@@ -1,21 +1,5 @@
 import { HomeLive, HomeNumbers, HomeVoucher } from "@/components/home-live";
 import { SiteHeader } from "@/components/site-header";
-import { ChainTag, SimTag } from "@/components/ui";
-
-const STEPS = [
-  {
-    title: "Pay with an email code",
-    tag: <ChainTag>On Arc</ChainTag>,
-  },
-  {
-    title: "The shop covers the refund",
-    tag: <SimTag />,
-  },
-  {
-    title: "The result pays out",
-    tag: <ChainTag>On Arc</ChainTag>,
-  },
-];
 
 export default function Home() {
   return (
@@ -53,22 +37,6 @@ export default function Home() {
             How the money moves
           </h2>
           <HomeNumbers />
-          <ol className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-3 md:gap-0">
-            {STEPS.map((s, i) => (
-              <li
-                key={s.title}
-                className="relative md:border-l md:border-ink/15 md:px-6 md:first:border-l-0 md:first:pl-0"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="font-display grid h-9 w-9 place-items-center rounded-full bg-ink text-[15px] text-paper-raised">
-                    {i + 1}
-                  </span>
-                  <h3 className="text-[18px] font-bold">{s.title}</h3>
-                </div>
-                <div className="mt-2">{s.tag}</div>
-              </li>
-            ))}
-          </ol>
         </section>
       </main>
     </>

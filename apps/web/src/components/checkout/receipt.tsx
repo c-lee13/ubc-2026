@@ -4,9 +4,18 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ApiError, type PromotionDto, type PurchaseReceiptDto } from "@/lib/api";
 import { api, chain } from "@/lib/client";
 import { describe, type Problem } from "@/lib/errors";
-import { cents, clock, countdown, marketMeaning, orderNumber, usd } from "@/lib/format";
+import {
+  cents,
+  clock,
+  conditionText,
+  countdown,
+  marketMeaning,
+  orderNumber,
+  usd,
+} from "@/lib/format";
 import { useNowSeconds, usePoll } from "@/lib/hooks";
 import { useWallet } from "@/lib/wallet/session";
+import { LoginCard } from "../login-card";
 import { failureText } from "../merchant/ledger";
 import { Button, ButtonLink, ChainLink, Notice, SimTag, Spinner } from "../ui";
 import type { StampTone } from "../voucher";
@@ -32,6 +41,7 @@ export function Receipt({
   const now = useNowSeconds();
   const [busy, setBusy] = useState(false);
   const [claimed, setClaimed] = useState(false);
+  const [askLogin, setAskLogin] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
 
   const receipt = usePoll(() => api.purchase(purchaseKey), 3_000, [purchaseKey]);
@@ -80,7 +90,9 @@ export function Receipt({
           <p className="text-[14px] font-bold">Don&apos;t serve this order</p>
         ) : null}
         <div className="flex flex-wrap items-end justify-between gap-x-4">
-          <p className="font-display text-[30px] leading-tight">{headerText(r, notYet)}</p>
+          <p className="font-display text-[30px] leading-tight">
+            {headerText(r, notYet, promo.itemName)}
+          </p>
           <p className="font-display text-[64px] leading-none" title="Order number">
             {orderNumber(purchaseKey)}
           </p>
@@ -129,7 +141,16 @@ export function Receipt({
           ) : null}
         </TimelineStep>
 
-        <TimelineStep n={3} state={v.result} title={resultTitle(v.result, outcome)} last={false}>
+        <TimelineStep
+          n={3}
+          state={v.result}
+          title={resultTitle(
+            v.result,
+            outcome,
+            conditionText(promo.outcomeLabel, promo.geminiMarketId),
+          )}
+          last={false}
+        >
           {v.result === "doing" ? (
             <p>
               {meaning.closesAt && now !== null && meaning.closesAt > now
@@ -141,13 +162,16 @@ export function Receipt({
 
         <TimelineStep n={4} state={v.money} title={moneyTitle(r, dollars)} last>
           {canClaim && !claimed ? (
-            <div className="mt-1 space-y-2">
-              <Button variant="note" busy={busy} onClick={claim} disabled={!isBuyer}>
+            <div className="mt-2 space-y-3">
+              <Button
+                variant="note"
+                size="lg"
+                busy={busy}
+                onClick={() => (isBuyer ? void claim() : setAskLogin(true))}
+              >
                 Get my {dollars} back
               </Button>
-              {!isBuyer ? (
-                <p className="text-[13px] text-ink-soft">Log in with the email that paid.</p>
-              ) : null}
+              {askLogin && !isBuyer ? <LoginCard compact cta="Log in to get it" /> : null}
             </div>
           ) : r && (r.onChainState === "Refunded" || r.onChainState === "ClaimedByCustomer") ? (
             <p>Back in your balance.</p>
@@ -264,7 +288,7 @@ function headerTone(r: PurchaseReceiptDto | null): string {
   return "bg-paper-deep text-ink";
 }
 
-function headerText(r: PurchaseReceiptDto | null, notYet: boolean): string {
+function headerText(r: PurchaseReceiptDto | null, notYet: boolean, item: string): string {
   if (!r) return notYet ? "Confirming…" : "Paid";
   switch (r.step) {
     case "PROCESSING":
@@ -275,7 +299,7 @@ function headerText(r: PurchaseReceiptDto | null, notYet: boolean): string {
     case "REFUNDED":
       return "Refunded";
     case "YOU_WON":
-      return "It happened!";
+      return `Free ${item.toLowerCase()}!`;
     case "NOT_THIS_TIME":
       return "Not this time";
     case "DONE":
@@ -285,9 +309,12 @@ function headerText(r: PurchaseReceiptDto | null, notYet: boolean): string {
   }
 }
 
-function resultTitle(state: StepState, outcome: "YES" | "NO" | null): string {
+function resultTitle(state: StepState, outcome: "YES" | "NO" | null, condition: string): string {
   if (state === "skipped") return "The result doesn't matter for this order";
-  if (outcome === "YES") return "It happened";
+  if (outcome === "YES") {
+    const past = condition.replace(/\bcloses\b/, "closed").replace(/\bwins\b/, "won");
+    return past === condition ? "It happened" : past;
+  }
   if (outcome === "NO") return "It didn't happen this time";
   return "Waiting for the official result";
 }

@@ -171,17 +171,11 @@ function PayPanel({
 
   const blocker: Problem | null =
     promo.status === "DRAFT"
-      ? {
-          title: "Not published yet",
-          detail: "The shop hasn't published this promo, so it can't take payments.",
-        }
+      ? { title: "Not published yet", detail: "" }
       : closed || live?.phase === "WAITING_FOR_RESULT"
-        ? {
-            title: "Sales closed",
-            detail: "This promo stopped selling. The result decides the purchases already made.",
-          }
+        ? { title: "Sales closed", detail: "" }
         : live?.phase === "RESULT_YES" || live?.phase === "RESULT_NO"
-          ? { title: "Promo finished", detail: "This promo already has its official result." }
+          ? { title: "Promo finished", detail: "" }
           : (s && !s.canBuy) || (live && !live.canBuy)
             ? {
                 title: "Paused right now",
@@ -259,6 +253,15 @@ function PayPanel({
   ];
 
   const left = now === null ? null : promo.depositDeadline - now;
+  // Closed, finished or unpublished: nothing to buy, so no odds, clock or login.
+  const over = Boolean(blocker && blocker.title !== "Paused right now");
+  if (over) {
+    return (
+      <section className="rounded-2xl bg-paper-raised p-6 text-center ring-1 ring-ink/10">
+        <p className="font-display text-[36px] leading-tight">{blocker!.title}</p>
+      </section>
+    );
+  }
   return (
     <section className="rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10 sm:p-6">
       <div className="grid grid-cols-2 gap-4">

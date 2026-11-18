@@ -84,13 +84,28 @@ export function CounterView({ promoId }: { promoId: string }) {
               </div>
             ) : null}
           </div>
-          <p className="mt-4 text-center text-[22px] font-bold">
-            {selling ? "Scan to pay with your email" : "Not selling right now"}
-          </p>
-          {selling && now !== null ? (
-            <p className="mt-1 text-center text-[15px] text-ink-soft">
-              {countdown(p.depositDeadline - now)} left, {chance(live?.liveAskMicroUsd)} chance
-            </p>
+          {selling ? (
+            <>
+              <p className="mt-4 text-center text-[22px] font-bold">Scan to pay with your email</p>
+              {now !== null ? (
+                <div className="mt-4 grid grid-cols-2 gap-4 text-center">
+                  <p>
+                    <span className="font-display block text-[48px] leading-none sm:text-[64px] text-note">
+                      {chance(live?.liveAskMicroUsd)}
+                    </span>
+                    <span className="text-[15px] font-semibold text-ink-soft">
+                      chance it&apos;s free
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-display block text-[48px] leading-none sm:text-[64px]">
+                      {countdown(p.depositDeadline - now)}
+                    </span>
+                    <span className="text-[15px] font-semibold text-ink-soft">left to buy</span>
+                  </p>
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
       </aside>

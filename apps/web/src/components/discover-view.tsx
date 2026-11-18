@@ -14,11 +14,14 @@ export function DiscoverView() {
   const promos = usePoll(() => api.promotions(), 15_000);
   const now = useNowSeconds();
   const all = promos.data?.promotions ?? [];
-  const selling = all.filter((p) => p.live?.phase === "LIVE");
+  // The list refreshes every 15 s; the clock decides in between so 0:00 never shows as selling.
+  const isSelling = (p: PromotionDto) =>
+    p.live?.phase === "LIVE" && (now === null || p.depositDeadline > now);
+  const selling = all.filter(isSelling);
   // One row per shop + item + condition: the newest closed one.
   const seen = new Set<string>();
   const closed = all
-    .filter((p) => p.live?.phase !== "LIVE")
+    .filter((p) => !isSelling(p))
     .sort((a, b) => b.depositDeadline - a.depositDeadline)
     .filter((p) => {
       const k = `${p.shop.name}|${p.itemName}|${conditionText(p.outcomeLabel, p.geminiMarketId)}`;

@@ -234,22 +234,21 @@ export function Notice({
 export function Stat({
   label,
   value,
-  sub,
-  sim,
+  tag,
+  title,
 }: {
   label: ReactNode;
   value: ReactNode;
-  sub?: ReactNode;
-  sim?: boolean;
+  /** "Simulated hedge" or "On Arc", shown under the number. */
+  tag?: ReactNode;
+  /** Detail on hover. */
+  title?: string;
 }) {
   return (
-    <div className="min-w-0">
-      <div className="flex items-center gap-1.5 text-[13px] text-ink-soft">
-        {label}
-        {sim ? <SimTag /> : null}
-      </div>
+    <div className="min-w-0" title={title}>
+      <div className="text-[13px] text-ink-soft">{label}</div>
       <div className="font-display mt-1.5 text-[40px] leading-none">{value}</div>
-      {sub ? <div className="mt-0.5 text-[13px] text-ink-soft">{sub}</div> : null}
+      {tag ? <div className="mt-1.5">{tag}</div> : null}
     </div>
   );
 }
