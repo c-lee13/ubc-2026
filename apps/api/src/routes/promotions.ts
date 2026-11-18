@@ -3,7 +3,7 @@ import type { SolanaServerGateway } from "@hedged/shared";
 import type { FastifyInstance } from "fastify";
 import type { GeminiAdapter } from "../gemini/adapter";
 import { checkDepositDeadline } from "../promotions/deadline";
-import { liveState, promoStats, type LiveState } from "../promotions/live-state";
+import { liveState, promoStats, publicLiveState, type LiveState } from "../promotions/live-state";
 import { PromotionConflictError, type PromotionRow, type Store } from "../store/types";
 import { canonical, isChainId, isWalletAddress, sameChainString } from "../chain-ids";
 import { sendGeminiError } from "./markets";
@@ -14,6 +14,11 @@ export interface PromotionRouteDeps {
   /** null when no Solana gateway is configured (SOLANA_GATEWAY=none). */
   gateway: SolanaServerGateway | null;
   now?: () => Date;
+  /**
+   * Is this request from the shop's own wallet? (Circle login: X-User-Token whose wallet address is
+   * the merchant.) Absent = never; the dashboard then shows the public view only.
+   */
+  isMerchant?: (headers: Record<string, unknown>, merchant: string) => Promise<boolean>;
 }
 
 const UINT = /^\d{1,18}$/;
@@ -64,7 +69,7 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
       hedgeBudget: input.hedgeBudget,
     });
     return reply.code(201).send({
-      promotion: await toDto(promo, null),
+      promotion: await toDto(promo, null, "owner"),
       // Exactly what the merchant's wallet must sign (initialize_promo args).
       initializePromo: {
         promoNonce: promo.promoNonce,
@@ -86,7 +91,7 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
       const promo = await deps.store.getPromotion(req.params.id);
       if (!promo) return reply.code(404).send({ error: "promotion_not_found" });
       if (promo.status === "ACTIVE" && promo.promoPda === promoPda) {
-        return { promotion: await toDto(promo, null) };
+        return { promotion: await toDto(promo, null, "public") };
       }
       if (!deps.gateway) return reply.code(503).send({ error: "solana_gateway_unavailable" });
 
@@ -114,7 +119,7 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
           shopName: active.shopName,
           location: active.location,
         });
-        return { promotion: await toDto(active, null) };
+        return { promotion: await toDto(active, null, "public") };
       } catch (err) {
         if (err instanceof PromotionConflictError) {
           return reply.code(409).send({ error: "promotion_conflict", message: err.message });
@@ -128,7 +133,9 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
   app.get("/api/promotions", async () => {
     const promos = await deps.store.listPromotions({ status: "ACTIVE" });
     const asks = await liveAsks(promos);
-    const items = await Promise.all(promos.map((p) => toDto(p, asks.get(p.geminiMarketId))));
+    const items = await Promise.all(
+      promos.map((p) => toDto(p, asks.get(p.geminiMarketId), "public")),
+    );
     const order = { LIVE: 0, PAUSED: 1, WAITING_FOR_RESULT: 2, RESULT_YES: 3, RESULT_NO: 4 };
     items.sort((a, b) => order[a.live!.phase] - order[b.live!.phase]);
     return { promotions: items };
@@ -139,11 +146,11 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
     const promo = await deps.store.getPromotion(req.params.id);
     if (!promo) return reply.code(404).send({ error: "promotion_not_found" });
     const asks = promo.status === "ACTIVE" ? await liveAsks([promo]) : new Map();
-    return { promotion: await toDto(promo, asks.get(promo.geminiMarketId)) };
+    return { promotion: await toDto(promo, asks.get(promo.geminiMarketId), "public") };
   });
 
-  // Merchant dashboard (drafts included). All of this is derivable from public chain data and
-  // public Gemini prices, so it is readable without login in the MVP.
+  // Merchant dashboard (drafts included). Sales and hedge stats are derivable from public chain data
+  // and Gemini prices, so they are always shown; the shop's max cost and budget only to the shop.
   app.get<{ Params: { pubkey: string } }>(
     "/api/merchants/:pubkey/dashboard",
     async (req, reply) => {
@@ -157,17 +164,21 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
       if (!merchant && promos.length === 0) {
         return reply.code(404).send({ error: "merchant_not_found" });
       }
+      const audience =
+        deps.isMerchant && (await deps.isMerchant(req.headers, pubkey).catch(() => false))
+          ? "owner"
+          : "public";
       const asks = await liveAsks(promos.filter((p) => p.status === "ACTIVE"));
       const promotions = await Promise.all(
         promos.map(async (p) => ({
-          ...(await toDto(p, asks.get(p.geminiMarketId))),
+          ...(await toDto(p, asks.get(p.geminiMarketId), audience)),
           stats: promoStats(
             await deps.store.listPurchases(p.id),
             await deps.store.listHedgesByPromotion(p.id),
           ),
         })),
       );
-      return { merchant, simulatedHedges: true, promotions };
+      return { merchant, viewer: audience, simulatedHedges: true, promotions };
     },
   );
 
@@ -193,10 +204,18 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
     return new Map(entries);
   }
 
-  async function toDto(p: PromotionRow, liveAsk: bigint | null | undefined) {
+  /**
+   * `audience: "public"` (directory, checkout pre-check) leaves out the shop's max cost and budget;
+   * `"owner"` (create/confirm responses, merchant dashboard) includes them.
+   */
+  async function toDto(
+    p: PromotionRow,
+    liveAsk: bigint | null | undefined,
+    audience: "public" | "owner",
+  ) {
     const live: LiveState | null =
       p.status === "ACTIVE" ? liveState(p, liveAsk ?? null, nowUnix()) : null;
-    return {
+    const base = {
       id: p.id,
       status: p.status,
       promoPda: p.promoPda,
@@ -206,9 +225,13 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
       outcomeLabel: p.outcomeLabel,
       geminiMarketId: p.geminiMarketId,
       depositDeadline: p.depositDeadline,
+      onChainState: p.onChainState,
+    };
+    if (audience === "public") return { ...base, live: live && publicLiveState(live) };
+    return {
+      ...base,
       maxYesPriceMicroUsd: p.maxYesPriceMicroUsd.toString(),
       hedgeBudget: p.hedgeBudget.toString(),
-      onChainState: p.onChainState,
       live,
     };
   }
