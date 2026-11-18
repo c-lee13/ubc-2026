@@ -43,9 +43,18 @@ import {
   buildClaimMerchantTx,
   buildClaimRefundTx,
   buildDepositTx,
+  buildDepositWithPermitTx,
   buildInitializePromoTx,
   type UnsignedTx,
 } from "../src/transactions";
+import {
+  permitTypedData,
+  readPermitNonce,
+  readTokenDomain,
+  receiveAuthorizationTypedData,
+} from "../src/checkout";
+import { escrowErrorName } from "../src/errors";
+import { isEscrowV2 } from "../src/accounts";
 import {
   ArcGateway,
   computeStreamsSignature,
@@ -53,6 +62,7 @@ import {
   GatewayInvalidStateError,
   ResolutionTooEarlyError,
   runArcStreamsFilterLocally,
+  type ArcResolutionEvent,
   startArcStreamsWebhookServer,
 } from "../src/server";
 import { SolanaGatewayError } from "@hedged/shared";
@@ -68,7 +78,9 @@ const pub = createPublicClient({ chain, transport: http(RPC) }) as PublicClient;
 const testClient = createTestClient({ chain, mode: "anvil", transport: http(RPC) });
 const MN = "test test test test test test test test test test test junk";
 const acct = (i: number) => mnemonicToAccount(MN, { addressIndex: i });
-const [admin, merchant, alice, bob, carol] = [0, 2, 3, 4, 5].map(acct) as [
+const [admin, merchant, alice, bob, carol, dave, frank] = [0, 2, 3, 4, 5, 6, 7].map(acct) as [
+  HDAccount,
+  HDAccount,
   HDAccount,
   HDAccount,
   HDAccount,
@@ -578,6 +590,8 @@ async function main() {
     streamed.length,
   );
 
+  await v2Section({ gw, escrow, usdc, relayer: relayer.address, resolutions });
+
   for (const s of [subD, subC, subR, subF, subRe, subS]) await s.stop();
   await gw.stop();
   await stranger.stop();
@@ -585,6 +599,300 @@ async function main() {
   await new Promise<void>((r) => server.close(() => r()));
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
+}
+
+/** v2 escrow: automatic payouts (YES / NO / cancel / VOID), VOID rules, one-signature checkout. */
+async function v2Section(o: {
+  gw: Awaited<ReturnType<typeof createArcGatewayFromEnv>>;
+  escrow: Address;
+  usdc: Address;
+  relayer: Address;
+  resolutions: ResolutionEvent[];
+}) {
+  const { gw, escrow, usdc } = o;
+  const bal = async (a: Address) =>
+    (await pub.readContract({
+      address: usdc,
+      abi: MOCK_USDC_ABI,
+      functionName: "balanceOf",
+      args: [a],
+    })) as bigint;
+  const state = async (k: Hex) => (await gw.getPurchaseState(k, "confirmed"))?.state;
+  const w = createWalletClient({ chain, transport: http(RPC), account: admin });
+  for (const c of [dave, frank]) {
+    const h = await w.writeContract({
+      address: usdc,
+      abi: MOCK_USDC_ABI,
+      functionName: "mint",
+      args: [c.address, 10n * OFFER],
+      account: admin,
+      chain,
+    });
+    await pub.waitForTransactionReceipt({ hash: h }); // dave and frank never approve the escrow
+  }
+  check(await isEscrowV2(pub, escrow), "isEscrowV2 detects the v2 contract");
+
+  console.log("\n# v2 promo C: one-signature checkout, auto cancel refund, VOID");
+  const deadlineC = BigInt((await now()) + 60);
+  await send(
+    merchant,
+    buildInitializePromoTx(escrow, {
+      promoNonce: 3n,
+      offerAmount: OFFER,
+      depositDeadline: deadlineC,
+      marketId: "gemini:GAME-POSTPONED",
+    }),
+  );
+  const promoC = promoIdOf(merchant.address, 3n);
+
+  // dave signs ONE typed message; the relayer submits and pays the gas
+  const domain = await readTokenDomain(pub, usdc);
+  const idD = newPurchaseIdHex();
+  const td = receiveAuthorizationTypedData({
+    domain,
+    escrow,
+    promoId: promoC,
+    customer: dave.address,
+    purchaseIdHex: idD,
+    amount: OFFER,
+    validBefore: deadlineC,
+  });
+  const signature = await dave.signTypedData(td);
+  const auth = {
+    promoId: promoC,
+    purchaseIdHex: idD,
+    customer: dave.address,
+    amount: OFFER,
+    validAfter: 0n,
+    validBefore: deadlineC,
+    signature,
+  };
+  const dave0 = await bal(dave.address);
+  const relayerTok0 = await bal(o.relayer);
+  await expectGatewayError(
+    gw.submitAuthorizedDeposit({ ...auth, purchaseIdHex: newPurchaseIdHex() }),
+    "TX_FAILED",
+    "signature re-bound to another purchase id: rejected",
+  );
+  const sd = await gw.submitAuthorizedDeposit(auth);
+  const dk = purchaseKeyOf(promoC, dave.address, idD);
+  const du = await gw.getPurchaseState(dk, "confirmed");
+  check(
+    !sd.alreadyApplied &&
+      sd.purchasePda === dk &&
+      du?.state === "Deposited" &&
+      du.customer.toLowerCase() === dave.address.toLowerCase(),
+    "depositWithAuthorization: relayer submits, purchase belongs to the signer",
+    du,
+  );
+  check(
+    dave0 - (await bal(dave.address)) === OFFER && (await bal(o.relayer)) === relayerTok0,
+    "exactly the offer left the customer; the relayer paid only gas",
+  );
+  const sd2 = await gw.submitAuthorizedDeposit(auth);
+  check(
+    sd2.alreadyApplied && sd2.signature === sd.signature,
+    "resubmitting the same signature: alreadyApplied",
+  );
+  const vd = await gw.verifyTransaction(sd.signature!);
+  const vev = vd.events[0];
+  check(
+    vd.confirmed &&
+      vev?.name === "DepositEvent" &&
+      vev.customer.toLowerCase() === dave.address.toLowerCase(),
+    "verifyTransaction(signed deposit): DepositEvent for the signer",
+  );
+
+  const ids = [newPurchaseIdHex(), newPurchaseIdHex(), newPurchaseIdHex(), newPurchaseIdHex()];
+  for (const [who, id] of [
+    [alice, ids[0]],
+    [bob, ids[1]],
+    [carol, ids[2]],
+    [alice, ids[3]],
+  ] as const)
+    await send(who, buildDepositTx(escrow, { promoId: promoC, purchaseIdHex: id!, amount: OFFER }));
+  const [c1, c2, c3, c4] = [
+    purchaseKeyOf(promoC, alice.address, ids[0]!),
+    purchaseKeyOf(promoC, bob.address, ids[1]!),
+    purchaseKeyOf(promoC, carol.address, ids[2]!),
+    purchaseKeyOf(promoC, alice.address, ids[3]!),
+  ];
+  for (const k of [c1, c2, dk]) await gw.markHedged(k);
+  await gw.cancelUnhedged(c3); // c4 stays Deposited (never hedged)
+
+  const carol0 = await bal(carol.address);
+  const sc = await gw.settlePurchase(c3);
+  check(
+    !sc.alreadyApplied &&
+      (await state(c3)) === "Refunded" &&
+      (await bal(carol.address)) - carol0 === OFFER,
+    "auto refund of a cancelled purchase, no customer tap (promo still Active)",
+  );
+  check((await gw.settlePurchase(c3)).alreadyApplied, "settlePurchase repeat: alreadyApplied");
+  await expectGatewayError(
+    gw.settlePurchase(c1),
+    "INVALID_STATE",
+    "settlePurchase on a Hedged purchase before resolution: INVALID_STATE",
+    (e) => (e as GatewayInvalidStateError).observedState === "Hedged",
+  );
+  const preview = await gw.previewSettlement(c1, "confirmed");
+  check(preview.status === "NotDue", "previewSettlement: NotDue while Active", preview);
+
+  await advance(61);
+  const rv = await gw.resolvePromotion(promoC, "VOID");
+  const pc = await gw.getArcPromoState(promoC, "confirmed");
+  check(!rv.alreadyApplied && pc?.state === "ResolvedVoid", "resolvePromotion VOID", pc?.state);
+  check(
+    (await gw.resolvePromotion(promoC, "VOID")).alreadyApplied,
+    "resolve VOID again: alreadyApplied",
+  );
+  await expectGatewayError(
+    gw.resolvePromotion(promoC, "NO"),
+    "INVALID_STATE",
+    "NO after VOID: INVALID_STATE (no outcome switch)",
+  );
+  const p1 = await gw.previewSettlement(c1, "confirmed");
+  check(
+    p1.status === "Payable" &&
+      p1.recipient.toLowerCase() === merchant.address.toLowerCase() &&
+      p1.kind === "MERCHANT_PAYOUT",
+    "preview after VOID: hedged purchase pays the shop",
+    p1,
+  );
+
+  const m0 = await bal(merchant.address);
+  const a0 = await bal(alice.address);
+  const b0 = await bal(bob.address);
+  const sp = await gw.settlePromotion(promoC);
+  check(
+    sp.settled.length === 4 &&
+      sp.skipped.length === 1 &&
+      sp.skipped[0]?.status === "AlreadySettled" &&
+      sp.receipts.length === 1,
+    "settlePromotion: 4 paid in ONE tx, the refunded one skipped",
+    sp,
+  );
+  check(
+    (await bal(merchant.address)) - m0 === 3n * OFFER &&
+      (await bal(alice.address)) - a0 === OFFER &&
+      (await bal(bob.address)) === b0,
+    "VOID: shop keeps the 3 hedged sales; the never-hedged purchase is refunded",
+  );
+  check(
+    (await state(c1)) === "ClaimedByMerchant" &&
+      (await state(dk)) === "ClaimedByMerchant" &&
+      (await state(c4)) === "Refunded",
+    "VOID terminal states",
+  );
+  const sp2 = await gw.settlePromotion(promoC);
+  check(
+    sp2.settled.length === 0 && sp2.receipts.length === 0,
+    "settlePromotion again: nothing to pay, no tx",
+  );
+  try {
+    await pub.simulateContract({
+      address: escrow,
+      abi: HEDGED_ESCROW_ABI,
+      functionName: "claimMerchant",
+      args: [c1],
+      account: merchant,
+    });
+    check(false, "self-claim after auto payout must fail");
+  } catch (e) {
+    check(escrowErrorName(e) === "AlreadyClaimed", "self-claim after auto payout: AlreadyClaimed");
+  }
+
+  console.log("\n# v2 promo D (YES) and E (NO): auto payouts; permit checkout");
+  const deadlineD = BigInt((await now()) + 30);
+  for (const n of [4n, 5n])
+    await send(
+      merchant,
+      buildInitializePromoTx(escrow, {
+        promoNonce: n,
+        offerAmount: OFFER,
+        depositDeadline: deadlineD,
+        marketId: `gemini:AUTO-${n}`,
+      }),
+    );
+  const [promoD, promoE] = [promoIdOf(merchant.address, 4n), promoIdOf(merchant.address, 5n)];
+  const idF = newPurchaseIdHex();
+  const ptd = permitTypedData({
+    domain,
+    owner: frank.address,
+    escrow,
+    amount: OFFER,
+    nonce: await readPermitNonce(pub, usdc, frank.address),
+    deadline: deadlineD,
+  });
+  await send(
+    frank,
+    buildDepositWithPermitTx(escrow, {
+      promoId: promoD,
+      purchaseIdHex: idF,
+      amount: OFFER,
+      deadline: deadlineD,
+      signature: await frank.signTypedData(ptd),
+    }),
+  );
+  const fk = purchaseKeyOf(promoD, frank.address, idF);
+  check((await state(fk)) === "Deposited", "depositWithPermit: no approve tx needed");
+  const idE = newPurchaseIdHex();
+  await send(bob, buildDepositTx(escrow, { promoId: promoE, purchaseIdHex: idE, amount: OFFER }));
+  const ek = purchaseKeyOf(promoE, bob.address, idE);
+  await gw.markHedged(fk);
+  await gw.markHedged(ek);
+  await advance(31);
+  await gw.resolvePromotion(promoD, "YES");
+  await gw.resolvePromotion(promoE, "NO");
+  const f0 = await bal(frank.address);
+  const m1 = await bal(merchant.address);
+  const sb = await gw.settlePurchases([fk, ek, fk]);
+  check(
+    sb.settled.length === 2 && sb.receipts.length === 1,
+    "settlePurchases across two promos in one tx (duplicate key ignored)",
+    sb,
+  );
+  check(
+    (await bal(frank.address)) - f0 === OFFER && (await bal(merchant.address)) - m1 === OFFER,
+    "YES pays the customer, NO pays the shop, automatically",
+  );
+  const vb = await gw.verifyTransaction(sb.receipts[0]!.signature!);
+  const kinds = vb.events.filter((e) => e.name === "ClaimEvent").map((e) => e.kind);
+  check(
+    kinds.includes("YES_REFUND") && kinds.includes("MERCHANT_PAYOUT"),
+    "the batch tx verifies with both ClaimEvents",
+    kinds,
+  );
+
+  console.log("\n# v2 subscriptions and conservation");
+  const all: ArcResolutionEvent[] = [];
+  const subAll = await gw.subscribeToArcResolutions(async (e) => void all.push(e), {
+    fromSlot: 0,
+  });
+  for (let i = 0; i < 30 && all.length < 5; i++) {
+    await gw.sweepNow();
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  check(
+    all.length === 5 && all.filter((e) => e.outcome === "VOID").length === 1,
+    "subscribeToArcResolutions delivers VOID",
+    all.map((e) => e.outcome),
+  );
+  check(
+    !o.resolutions.some((e) => (e.outcome as string) === "VOID"),
+    "the shared YES/NO subscription never receives VOID",
+  );
+  await subAll.stop();
+  const outstanding = await Promise.all(
+    [promoC, promoD, promoE].map(
+      async (p) => (await gw.getPromoState(p, "confirmed"))?.outstanding,
+    ),
+  );
+  check(
+    outstanding.every((x) => x === "0") && (await bal(escrow)) === 0n,
+    "every v2 deposit paid exactly once; vault = 0",
+    outstanding,
+  );
 }
 
 main().catch((e) => {
