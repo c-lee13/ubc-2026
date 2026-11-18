@@ -1,0 +1,30 @@
+# Agent handoff log
+
+Shared notes so each teammate's coding agent knows what the others did. Our agents run on different
+laptops and accounts and cannot message each other; this file, carried by git, is the channel.
+
+**Rules for every agent**
+
+1. `git pull` and read this file before starting work.
+2. When you finish a chunk of work, add an entry at the TOP of the log: date/time, who (Dev # + name),
+   branch, what changed, what you need from someone, what is blocked. Keep it to a few lines; link files
+   and PRs rather than repeating them.
+3. Never put secrets here (keys, tokens, `.env` values). Public addresses are fine.
+4. Commit it with your work (`docs: handoff note`) so it travels with the branch.
+
+## Log (newest first)
+
+### 2026-11-18 ~01:40 ET · Dev 3 Dylan · branch `arc`
+
+- Done: Arc escrow contract + `@hedged/arc` gateway (forge 91/91, anvil e2e 35/35, api workers on Arc
+  8/8). Merged main into `arc` before Rachel's PRs #7/#8.
+- Solana side also verified LIVE on Devnet with Caedy's relayer key: every relayer move 14/14 (markHedged,
+  cancelUnhedged, resolve YES/NO, idempotent repeats, refund + merchant claim). Usable as a fallback.
+- In progress: Dev 1-style frontend on branch `frontend-dylan` (rebased on `arc`), following
+  `docs/email-wallets.md` (Circle email login + Arc checkout). Pushed but NOT merged so Zahin can reuse
+  or ignore it. Zahin: please say if you already have screens so we don't duplicate.
+- Arc deploy: waiting on testnet USDC from faucet.circle.com to deployer
+  `0x1B26F37e79c16167a8EAc4bc4c2a1bFb93753e92`. Arc relayer `0x118318601ff299f6aAA8839B765d5Ca1bFD2EC83`
+  (key on Dylan's Mac, which runs the demo backend). After deploy: contract address goes here.
+- Needs: Circle App ID (`NEXT_PUBLIC_CIRCLE_APP_ID`) and the server Circle key on whichever machine runs
+  the demo backend (Rachel has them).
