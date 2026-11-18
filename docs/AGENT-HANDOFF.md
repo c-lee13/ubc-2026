@@ -19,6 +19,8 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 - Built `apps/web` on `arc` following `docs/email-wallets.md`: home, Discover, checkout (Circle email
   login, status check, one-time approve, deposit, receipt with order number), My promos + balance,
   counter screen (QR + order feed, "Serve" only when `canServe`), shop portal.
+- Brand: Wincentive. Logo in `apps/web/public/` (also the favicon); palette from the logo, tokens in
+  `apps/web/src/app/globals.css`.
 - Web env: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CIRCLE_APP_ID`; optional `NEXT_PUBLIC_ARC_ESCROW_ADDRESS`.
   `NEXT_PUBLIC_WALLET_FIXTURE=1` = dev-only labeled mock of Circle and the wallet/checkout routes
   (dropped from production builds).
