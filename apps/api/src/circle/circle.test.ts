@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { HEDGED_ESCROW_ABI, purchaseKeyOf } from "@hedged/arc";
+import { HEDGED_ESCROW_ABI, promoIdOf, purchaseKeyOf } from "@hedged/arc";
 import { decodeFunctionData, erc20Abi, type Hex } from "viem";
 import { loadConfig } from "../config";
 import type { GeminiAdapter } from "../gemini/adapter";
@@ -60,15 +60,16 @@ async function setup(
     balance?: bigint;
     ask?: string;
     circle?: ReturnType<typeof fakeCircle>;
-    pda?: string;
+    pda?: string | null;
+    merchant?: string;
   } = {},
 ) {
   const store = new MemoryStore();
   const promo = await store.createPromotion({
-    promoPda: opts.pda ?? PROMO_PDA,
+    promoPda: opts.pda === undefined ? PROMO_PDA : opts.pda,
     promoNonce: "1",
     mint: USDC,
-    merchant: "0x" + "bb".repeat(20),
+    merchant: opts.merchant ?? "0x" + "bb".repeat(20),
     itemName: "Latte",
     shopName: "Bean There",
     location: "",
@@ -114,7 +115,7 @@ async function setup(
   });
   app.log.level = "silent";
   const auth = { "x-user-token": USER_TOKEN };
-  return { app, promo, calls: circle.calls, auth };
+  return { app, promo, store, calls: circle.calls, auth };
 }
 
 test("wallet routes are off (503) without Circle config", async () => {
@@ -319,4 +320,193 @@ test("faucet refusal is reported as faucet_unavailable; expired login as circle_
   const w = await e.app.inject({ url: "/api/wallet", headers: e.auth });
   assert.equal(w.json().error, "circle_session_invalid");
   await e.app.close();
+});
+
+async function addPurchase(
+  store: MemoryStore,
+  promo: { id: string; promoPda: string | null },
+  customer: string,
+  onChainState: "Deposited" | "Hedged" | "Cancelled",
+  n = 1,
+) {
+  const key = "0x" + n.toString(16).padStart(2, "0").repeat(32);
+  await store.recordDeposit(
+    {
+      signature: `0x${"ab".repeat(31)}${n.toString(16).padStart(2, "0")}`,
+      eventIndex: 0,
+      slot: n,
+      blockTime: null,
+      commitment: "finalized",
+      promo: promo.promoPda!,
+      purchase: key,
+      customer,
+      purchaseId: "c".repeat(32),
+      amount: "5000000",
+      depositedAt: 1_795_370_000 + n,
+    },
+    promo.id,
+  );
+  await store.patchPurchase(key, { onChainState });
+  return key;
+}
+
+const decode = (call: Call) =>
+  decodeFunctionData({ abi: HEDGED_ESCROW_ABI, data: call.body!.callData as Hex });
+
+test("shop publishes its draft from its email wallet; the returned promoPda matches the contract id", async () => {
+  const s = await setup({ pda: null, merchant: WALLET.address });
+  assert.equal(s.promo.status, "DRAFT");
+  const r = await s.app.inject({
+    method: "POST",
+    url: `/api/promotions/${s.promo.id}/initialize`,
+    headers: s.auth,
+    payload: { walletId: WALLET.id },
+  });
+  assert.equal(r.statusCode, 200, r.body);
+  const call = s.calls.at(-1)!;
+  assert.equal(call.body!.contractAddress, ESCROW);
+  const d = decode(call);
+  assert.equal(d.functionName, "initializePromo");
+  assert.deepEqual(d.args, [
+    1n,
+    5_000_000n,
+    BigInt(s.promo.depositDeadline),
+    s.promo.geminiMarketId,
+  ]);
+  assert.equal(r.json().promoPda, promoIdOf(WALLET.address as Hex, 1n).toLowerCase());
+  assert.equal(r.json().confirm, `/api/promotions/${s.promo.id}/confirm`);
+  await s.app.close();
+
+  // Another shop's draft, and an already-published promo, are refused.
+  const other = await setup({ pda: null });
+  const o = await other.app.inject({
+    method: "POST",
+    url: `/api/promotions/${other.promo.id}/initialize`,
+    headers: other.auth,
+    payload: { walletId: WALLET.id },
+  });
+  assert.equal(o.json().error, "not_this_shops_wallet");
+  await other.app.close();
+  const live = await setup({ merchant: WALLET.address });
+  const l = await live.app.inject({
+    method: "POST",
+    url: `/api/promotions/${live.promo.id}/initialize`,
+    headers: live.auth,
+    payload: { walletId: WALLET.id },
+  });
+  assert.equal(l.json().error, "already_published");
+  await live.app.close();
+});
+
+test("customer refund / cancel: only their own purchase, only in a claimable state", async () => {
+  const s = await setup();
+  const cancelled = await addPurchase(s.store, s.promo, WALLET.address, "Cancelled", 1);
+  const deposited = await addPurchase(s.store, s.promo, WALLET.address, "Deposited", 2);
+  const hedged = await addPurchase(s.store, s.promo, WALLET.address, "Hedged", 3);
+  const someoneElse = await addPurchase(s.store, s.promo, "0x" + "cc".repeat(20), "Cancelled", 4);
+  const act = (key: string, kind: string) =>
+    s.app.inject({
+      method: "POST",
+      url: `/api/purchases/${key}/${kind}`,
+      headers: s.auth,
+      payload: { walletId: WALLET.id },
+    });
+
+  const refund = await act(cancelled.toUpperCase().replace("0X", "0x"), "claim-refund");
+  assert.equal(refund.statusCode, 200, refund.body);
+  assert.equal(decode(s.calls.at(-1)!).functionName, "claimRefund");
+  assert.deepEqual(decode(s.calls.at(-1)!).args, [cancelled]);
+
+  const cancel = await act(deposited, "cancel-expired");
+  assert.equal(cancel.statusCode, 200, cancel.body);
+  assert.equal(decode(s.calls.at(-1)!).functionName, "cancelExpiredDeposit");
+
+  assert.equal(
+    (await act(hedged, "claim-refund")).json().error,
+    "nothing_to_claim",
+    "no result yet",
+  );
+  assert.equal((await act(hedged, "cancel-expired")).json().error, "not_cancellable");
+  assert.equal((await act(someoneElse, "claim-refund")).statusCode, 403);
+  assert.equal((await act("0x" + "99".repeat(32), "claim-refund")).statusCode, 404);
+  assert.equal((await act("nope", "claim-refund")).statusCode, 400);
+
+  await s.store.setPromotionResolved(s.promo.id, "YES", null);
+  assert.equal((await act(hedged, "claim-refund")).statusCode, 200, "YES result: refund claimable");
+  await s.app.close();
+});
+
+test("shop collects after a NO result: every key checked before any challenge is created", async () => {
+  const s = await setup({ merchant: WALLET.address });
+  const a = await addPurchase(s.store, s.promo, "0x" + "cc".repeat(20), "Hedged", 1);
+  const b = await addPurchase(s.store, s.promo, "0x" + "dd".repeat(20), "Hedged", 2);
+  const collect = (purchaseKeys: unknown) =>
+    s.app.inject({
+      method: "POST",
+      url: "/api/purchases/claim-merchant",
+      headers: s.auth,
+      payload: { walletId: WALLET.id, purchaseKeys },
+    });
+
+  const before = s.calls.length;
+  const early = await collect([a, b]);
+  assert.equal(early.json().error, "nothing_to_collect", "not resolved yet");
+  await s.store.setPromotionResolved(s.promo.id, "NO", null);
+  const mixed = await collect([a, "0x" + "99".repeat(32)]);
+  assert.equal(mixed.statusCode, 404);
+  const contractCalls = s.calls.slice(before).filter((c) => c.path.endsWith("contractExecution"));
+  assert.equal(contractCalls.length, 0, "a bad key creates no challenges");
+
+  const ok = await collect([a, b, a]);
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.deepEqual(
+    ok.json().challenges.map((c: { purchaseKey: string }) => c.purchaseKey),
+    [a, b],
+  );
+  assert.equal(decode(s.calls.at(-1)!).functionName, "claimMerchant");
+  assert.equal((await collect([])).statusCode, 400);
+  await s.app.close();
+
+  const notMine = await setup();
+  const k = await addPurchase(notMine.store, notMine.promo, "0x" + "cc".repeat(20), "Hedged", 1);
+  await notMine.store.setPromotionResolved(notMine.promo.id, "NO", null);
+  const r = await notMine.app.inject({
+    method: "POST",
+    url: "/api/purchases/claim-merchant",
+    headers: notMine.auth,
+    payload: { walletId: WALLET.id, purchaseKeys: [k] },
+  });
+  assert.equal(r.json().error, "not_this_shops_purchase");
+  await notMine.app.close();
+});
+
+test("counter feed and customer list: newest first, order code matches the receipt", async () => {
+  const s = await setup();
+  const first = await addPurchase(s.store, s.promo, WALLET.address, "Hedged", 1);
+  const second = await addPurchase(s.store, s.promo, "0x" + "cc".repeat(20), "Deposited", 2);
+  await s.store.patchPurchase(first, { status: "HEDGED" });
+
+  const feed = (await s.app.inject({ url: `/api/promotions/${s.promo.id}/purchases` })).json();
+  assert.deepEqual(
+    feed.purchases.map((p: { purchasePda: string }) => p.purchasePda),
+    [second, first],
+  );
+  assert.equal(feed.purchases[1].canServe, true);
+  assert.equal(feed.purchases[0].canServe, false);
+  const receipt = (await s.app.inject({ url: `/api/purchases/${first}` })).json();
+  assert.equal(feed.purchases[1].orderCode, receipt.orderCode);
+  assert.equal((await s.app.inject({ url: "/api/promotions/nope/purchases" })).statusCode, 404);
+
+  const mine = (
+    await s.app.inject({
+      url: `/api/purchases?customer=${WALLET.address.toUpperCase().replace("0X", "0x")}`,
+    })
+  ).json();
+  assert.deepEqual(
+    mine.purchases.map((p: { purchasePda: string }) => p.purchasePda),
+    [first],
+  );
+  assert.equal(mine.purchases[0].promotion.shopName, "Bean There");
+  assert.equal((await s.app.inject({ url: "/api/purchases?customer=bad" })).statusCode, 400);
+  await s.app.close();
 });

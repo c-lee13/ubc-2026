@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { canonical, isChainId } from "../chain-ids";
+import { canonical, isChainId, isWalletAddress } from "../chain-ids";
 import { hedgeFingerprint } from "../hedging/fingerprint";
 import type { PromotionRow, PurchaseRow, Store } from "../store/types";
 
@@ -68,7 +68,66 @@ function resolved(outcome: "YES" | "NO" | null): {
   };
 }
 
+/** Short code shown on the customer's receipt and the shop's counter screen, so staff can match them. */
+export const orderCode = (purchasePda: string): string => purchasePda.slice(-4).toUpperCase();
+
+/** One line of a list (counter screen, "my purchases"): no hedge detail, that's on the receipt. */
+function summary(p: PurchaseRow, promo: PromotionRow) {
+  return {
+    purchasePda: p.purchasePda,
+    orderCode: orderCode(p.purchasePda),
+    customer: p.customer,
+    amount: p.amount.toString(),
+    depositedAt: p.depositedAt,
+    status: p.status,
+    onChainState: p.onChainState,
+    ...receiptStep(p, promo),
+    receipt: `/api/purchases/${p.purchasePda}`,
+  };
+}
+
+const MAX_LIST = 50;
+
 export function registerPurchaseRoutes(app: FastifyInstance, deps: { store: Store }): void {
+  // Counter screen: a promo's purchases, newest first. Everything here is public chain data.
+  app.get<{ Params: { id: string } }>("/api/promotions/:id/purchases", async (req, reply) => {
+    const promo = await deps.store.getPromotion(req.params.id);
+    if (!promo) return reply.code(404).send({ error: "promotion_not_found" });
+    const rows = (await deps.store.listPurchases(promo.id))
+      .sort((a, b) => b.depositedAt - a.depositedAt)
+      .slice(0, MAX_LIST);
+    return { promotionId: promo.id, purchases: rows.map((p) => summary(p, promo)) };
+  });
+
+  // Customer's own purchases across promos, newest first: GET /api/purchases?customer=<wallet>.
+  app.get<{ Querystring: { customer?: string } }>("/api/purchases", async (req, reply) => {
+    const raw = req.query.customer;
+    if (typeof raw !== "string" || !isWalletAddress(raw)) {
+      return reply.code(400).send({ error: "invalid_customer" });
+    }
+    const rows = await deps.store.listPurchasesByCustomer(canonical(raw), MAX_LIST);
+    const promos = new Map<string, PromotionRow | null>();
+    const out = [];
+    for (const p of rows) {
+      if (!promos.has(p.promotionId)) {
+        promos.set(p.promotionId, await deps.store.getPromotion(p.promotionId));
+      }
+      const promo = promos.get(p.promotionId);
+      if (!promo) continue;
+      out.push({
+        ...summary(p, promo),
+        promotion: {
+          id: promo.id,
+          shopName: promo.shopName,
+          itemName: promo.itemName,
+          outcomeLabel: promo.outcomeLabel,
+          resolvedOutcome: promo.resolvedOutcome,
+        },
+      });
+    }
+    return { customer: canonical(raw), purchases: out };
+  });
+
   // Receipt by purchase PDA (the customer's wallet knows it from the deposit transaction).
   app.get<{ Params: { id: string } }>("/api/purchases/:id", async (req, reply) => {
     if (!isChainId(req.params.id)) return reply.code(400).send({ error: "invalid_purchase_pda" });
@@ -81,6 +140,7 @@ export function registerPurchaseRoutes(app: FastifyInstance, deps: { store: Stor
 
     return {
       purchasePda: p.purchasePda,
+      orderCode: orderCode(p.purchasePda),
       customer: p.customer,
       amount: p.amount.toString(),
       // Off-chain processing status and authoritative on-chain escrow state, side by side.

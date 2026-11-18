@@ -186,6 +186,8 @@ export interface Store {
   ): Promise<{ purchase: PurchaseRow; created: boolean }>;
   getPurchaseByPda(purchasePda: Base58): Promise<PurchaseRow | null>;
   listPurchases(promotionId: string): Promise<PurchaseRow[]>;
+  /** A customer's purchases across all promos, newest first (customer as stored: canonical). */
+  listPurchasesByCustomer(customer: Base58, limit: number): Promise<PurchaseRow[]>;
   /** Compare-and-set. Returns the updated row, or null if status was not in `from`. */
   transitionPurchase(
     purchasePda: Base58,

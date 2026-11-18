@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { buildApproveTx, buildDepositTx, newPurchaseIdHex, purchaseKeyOf } from "@hedged/arc";
+import {
+  buildApproveTx,
+  buildCancelExpiredDepositTx,
+  buildClaimMerchantTx,
+  buildClaimRefundTx,
+  buildDepositTx,
+  buildInitializePromoTx,
+  newPurchaseIdHex,
+  promoIdOf,
+  purchaseKeyOf,
+} from "@hedged/arc";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Address, Hex } from "viem";
 import { canonical } from "../chain-ids";
@@ -260,6 +270,151 @@ export function registerCircleRoutes(app: FastifyInstance, deps: CircleRouteDeps
       return circleError(reply, err);
     }
   });
+
+  // 8. Shop publishes its DRAFT promo from its email wallet (initializePromo). Body: { walletId }.
+  //    Once the user approves the challenge, call POST /api/promotions/:id/confirm { promoPda }.
+  app.post<{ Params: { id: string }; Body: { walletId?: unknown } }>(
+    "/api/promotions/:id/initialize",
+    async (req, reply) => {
+      if (!deps.circle || !deps.arc) return disabled(reply);
+      const userToken = token(req, reply);
+      if (!userToken) return;
+      try {
+        const promo = await deps.store.getPromotion(req.params.id);
+        if (!promo) return reply.code(404).send({ error: "promotion_not_found" });
+        if (promo.status !== "DRAFT") return reply.code(409).send({ error: "already_published" });
+        if (promo.depositDeadline <= nowUnix()) {
+          return reply.code(409).send({ error: "deadline_passed" });
+        }
+        const wallet = await ownWallet(userToken, req.body?.walletId);
+        if (!wallet) return reply.code(404).send({ error: "wallet_not_found" });
+        if (canonical(wallet.address) !== canonical(promo.merchant)) {
+          return reply.code(403).send({ error: "not_this_shops_wallet" });
+        }
+        const tx = buildInitializePromoTx(deps.arc.escrow as Address, {
+          promoNonce: BigInt(promo.promoNonce),
+          offerAmount: promo.offerAmount,
+          depositDeadline: BigInt(promo.depositDeadline),
+          marketId: promo.geminiMarketId,
+        });
+        const promoPda = canonical(promoIdOf(wallet.address as Address, BigInt(promo.promoNonce)));
+        const challengeId = await contractCall(userToken, wallet.id, tx.to, tx.data, promoPda);
+        return { challengeId, promoPda, confirm: `/api/promotions/${promo.id}/confirm` };
+      } catch (err) {
+        return circleError(reply, err);
+      }
+    },
+  );
+
+  // 9. Customer claims a refund: a cancelled purchase, or a hedged one after a YES result.
+  //    Contract v1 needs this call; v2 pays out automatically. Body: { walletId }.
+  app.post<{ Params: { key: string }; Body: { walletId?: unknown } }>(
+    "/api/purchases/:key/claim-refund",
+    async (req, reply) => customerAction(req, reply, "claim-refund"),
+  );
+
+  // 10. Customer takes back a purchase still unhedged after the promo's cancel timeout. Body: { walletId }.
+  app.post<{ Params: { key: string }; Body: { walletId?: unknown } }>(
+    "/api/purchases/:key/cancel-expired",
+    async (req, reply) => customerAction(req, reply, "cancel-expired"),
+  );
+
+  // 11. Shop collects payments for hedged purchases after a NO result (contract v1).
+  //     Body: { walletId, purchaseKeys: [...] } (1-20) -> one challenge per purchase.
+  app.post<{ Body: { walletId?: unknown; purchaseKeys?: unknown } }>(
+    "/api/purchases/claim-merchant",
+    async (req, reply) => {
+      if (!deps.circle || !deps.arc) return disabled(reply);
+      const userToken = token(req, reply);
+      if (!userToken) return;
+      const raw = req.body?.purchaseKeys;
+      if (
+        !Array.isArray(raw) ||
+        raw.length === 0 ||
+        raw.length > 20 ||
+        !raw.every((k) => typeof k === "string" && BYTES32.test(canonical(k)))
+      ) {
+        return reply.code(400).send({ error: "invalid_purchase_keys" });
+      }
+      const keys = [...new Set((raw as string[]).map(canonical))];
+      try {
+        const wallet = await ownWallet(userToken, req.body?.walletId);
+        if (!wallet) return reply.code(404).send({ error: "wallet_not_found" });
+        // Check every key before asking Circle for anything, so a bad key creates no challenges.
+        for (const key of keys) {
+          const purchase = await deps.store.getPurchaseByPda(key);
+          const promo = purchase && (await deps.store.getPromotion(purchase.promotionId));
+          if (!purchase || !promo) {
+            return reply.code(404).send({ error: "purchase_not_found", purchaseKey: key });
+          }
+          if (canonical(promo.merchant) !== canonical(wallet.address)) {
+            return reply.code(403).send({ error: "not_this_shops_purchase", purchaseKey: key });
+          }
+          if (purchase.onChainState !== "Hedged" || promo.onChainState !== "ResolvedNo") {
+            return reply.code(409).send({
+              error: "nothing_to_collect",
+              purchaseKey: key,
+              onChainState: purchase.onChainState,
+              promoState: promo.onChainState,
+            });
+          }
+        }
+        const challenges: { purchaseKey: string; challengeId: string }[] = [];
+        for (const key of keys) {
+          const tx = buildClaimMerchantTx(deps.arc.escrow as Address, key as Hex);
+          const challengeId = await contractCall(userToken, wallet.id, tx.to, tx.data, key);
+          challenges.push({ purchaseKey: key, challengeId });
+        }
+        return { challenges };
+      } catch (err) {
+        return circleError(reply, err);
+      }
+    },
+  );
+
+  async function customerAction(
+    req: FastifyRequest<{ Params: { key: string }; Body: { walletId?: unknown } }>,
+    reply: FastifyReply,
+    kind: "claim-refund" | "cancel-expired",
+  ) {
+    if (!deps.circle || !deps.arc) return disabled(reply);
+    const userToken = token(req, reply);
+    if (!userToken) return;
+    const key = canonical(req.params.key);
+    if (!BYTES32.test(key)) return reply.code(400).send({ error: "invalid_purchase_key" });
+    try {
+      const purchase = await deps.store.getPurchaseByPda(key);
+      const promo = purchase && (await deps.store.getPromotion(purchase.promotionId));
+      if (!purchase || !promo) return reply.code(404).send({ error: "purchase_not_found" });
+      const wallet = await ownWallet(userToken, req.body?.walletId);
+      if (!wallet) return reply.code(404).send({ error: "wallet_not_found" });
+      if (canonical(wallet.address) !== canonical(purchase.customer)) {
+        return reply.code(403).send({ error: "not_your_purchase" });
+      }
+      // The contract enforces the real rules; these checks only give clearer errors up front.
+      const state = purchase.onChainState;
+      const ok =
+        kind === "cancel-expired"
+          ? state === "Deposited"
+          : state === "Cancelled" || (state === "Hedged" && promo.onChainState === "ResolvedYes");
+      if (!ok) {
+        return reply.code(409).send({
+          error: kind === "cancel-expired" ? "not_cancellable" : "nothing_to_claim",
+          onChainState: state,
+          promoState: promo.onChainState,
+        });
+      }
+      const escrow = deps.arc.escrow as Address;
+      const tx =
+        kind === "claim-refund"
+          ? buildClaimRefundTx(escrow, key as Hex)
+          : buildCancelExpiredDepositTx(escrow, key as Hex);
+      const challengeId = await contractCall(userToken, wallet.id, tx.to, tx.data, key);
+      return { challengeId, purchaseKey: key };
+    } catch (err) {
+      return circleError(reply, err);
+    }
+  }
 
   // ---- helpers --------------------------------------------------------------------------------
 

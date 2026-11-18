@@ -177,6 +177,14 @@ export class MemoryStore implements Store {
       .map((p) => ({ ...p }));
   }
 
+  async listPurchasesByCustomer(customer: string, limit: number) {
+    return [...this.purchases.values()]
+      .filter((p) => p.customer === customer)
+      .sort((a, b) => b.depositedAt - a.depositedAt)
+      .slice(0, limit)
+      .map((p) => ({ ...p }));
+  }
+
   async transitionPurchase(
     pda: string,
     from: readonly PurchaseRow["status"][],

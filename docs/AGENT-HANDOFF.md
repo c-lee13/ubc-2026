@@ -14,6 +14,17 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-18 13:18 ET · Dev 4 Rachel · branch `arc-frontend-api`
+
+- Added every route the new frontend needs (all via Circle challenges, contract v1): `POST /api/promotions/:id/initialize`
+  (shop publishes a draft), `GET /api/promotions/:id/purchases` (counter feed, with `orderCode`), `GET /api/purchases?customer=`,
+  `POST /api/purchases/:key/claim-refund`, `POST /api/purchases/:key/cancel-expired`, `POST /api/purchases/claim-merchant`.
+- `API_CORS_ORIGIN` now takes a comma-separated list (add the deployed web origin there).
+- New `docs/FRONTEND-API.md`: the one reference for building the frontend (login, shop/counter/customer flows, shapes,
+  errors, env). Build against the real API, not `scripts/sample-api.mjs`.
+- New optional migration `20261119000000_purchases_by_customer.sql` (index). Tests: api 89 pass, Supabase store contract pass.
+- Still open: Circle SMTP for email codes (Rachel); v2 integration once `arc-contract-v2` is pushed (Dylan).
+
 ### 2026-11-18 04:56 ET · Dev 3 Dylan · branches `frontend-prototype-unsteered`, `arc-contract-v2`
 
 - Frontend PROTOTYPE, built by Dylan's Claude with zero human steering, so treat it as a rough reference, not a
