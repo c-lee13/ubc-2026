@@ -70,6 +70,32 @@ export function useNowSeconds(intervalMs = 1000): number | null {
   return now;
 }
 
+/**
+ * Seconds since this browser first saw each id (kept in localStorage, so a reload keeps the clock).
+ * Used for the escrow-v2 fallback: offer a manual claim only once an automatic payout has sat
+ * for a few minutes. Ids are opaque, e.g. `${purchaseKey}:${step}`.
+ */
+export function useSeenFor(ids: string[]): (id: string) => number {
+  const now = useNowSeconds(5000);
+  const joined = ids.join(",");
+  const [since, setSince] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const t = Math.floor(Date.now() / 1000);
+    const out: Record<string, number> = {};
+    for (const id of joined ? joined.split(",") : []) {
+      const k = `hedged:seen:${id.toLowerCase()}`;
+      let at = store.get<number>(k);
+      if (typeof at !== "number") {
+        at = t;
+        store.set(k, at);
+      }
+      out[id] = at;
+    }
+    setSince(out);
+  }, [joined]);
+  return (id) => (now !== null && since[id] !== undefined ? Math.max(0, now - since[id]) : 0);
+}
+
 /** Window origin once mounted (for share links), "" before. */
 export function useOrigin(): string {
   const [origin, setOrigin] = useState("");

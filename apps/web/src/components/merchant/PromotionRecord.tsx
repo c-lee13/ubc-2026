@@ -62,14 +62,14 @@ function phase(p: DashboardPromo, now: number | null) {
         pill: PILL_GREEN,
         label: "It happened",
         rule: "border-l-[#1E8A5A]",
-        line: "Customers' refunds are open.",
+        line: "Customers get their money back from the escrow.",
       };
     case "RESULT_NO":
       return {
         pill: PILL_GREY,
         label: "Didn't happen",
         rule: "border-l-[#211D28]",
-        line: "You can collect covered sales on the Claims page.",
+        line: "Covered sales are paid to you. See them on the Claims page.",
       };
     default:
       return { pill: PILL_GREY, label: p.onChainState, rule: "border-l-[#CFC8BC]", line: "" };
@@ -180,7 +180,7 @@ export function PromotionRecord({ promo }: { promo: DashboardPromo }) {
         </button>
         {promo.live?.phase === "RESULT_NO" ? (
           <Link href="/merchant/claims" className={`text-sm ${LINK}`}>
-            Collect on Claims
+            See payments on Claims
           </Link>
         ) : null}
       </div>

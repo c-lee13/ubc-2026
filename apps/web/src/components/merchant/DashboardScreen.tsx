@@ -27,7 +27,7 @@ const PHASE_ORDER: Record<string, number> = {
   RESULT_YES: 4,
 };
 
-// Merchant lifecycle. Every stage runs here; two of them need promo-server routes (see below).
+// Merchant lifecycle. Every stage runs here, on the promo server's routes (docs/FRONTEND-API.md).
 const LIFECYCLE = [
   {
     title: "Draft",
@@ -45,9 +45,9 @@ const LIFECYCLE = [
     note: "Customers pay by email",
   },
   {
-    title: "Claim",
-    body: "Once the market's official outcome is final, customers claim refunds, or you collect the escrowed USDC on the Claims page.",
-    note: "Circle approval, on Arc",
+    title: "Pay out",
+    body: "Once the market's official outcome is final, the escrow refunds customers or pays your shop. On escrow v2 this is automatic; the Claims page shows every payment and has a manual fallback.",
+    note: "Automatic on Arc",
   },
 ];
 
@@ -266,9 +266,8 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
             ))}
           </ol>
           <p className="mt-8 border-t border-[#E6E1D8] pt-4 text-xs leading-relaxed text-[#5A5463]">
-            Publishing and claiming from an email wallet use promo-server routes that may not be
-            deployed yet (POST /api/promotions/:id/initialize and the claim routes). If one is
-            missing, that step says so and nothing is sent.
+            Publishing is one approval in Circle&apos;s window from the shop&apos;s email wallet.
+            Hedges are simulated from Gemini&apos;s live prices; payments are real test USDC on Arc.
           </p>
         </aside>
       </section>

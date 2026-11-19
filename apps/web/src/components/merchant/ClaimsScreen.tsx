@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ApiError, type PurchaseReceiptDto } from "@/lib/api";
+import { ApiError, type PurchaseSummaryDto } from "@/lib/api";
 import { api, chain } from "@/lib/client";
 import { describe } from "@/lib/errors";
 import { conditionText, orderNumber, usd } from "@/lib/format";
-import { usePoll } from "@/lib/hooks";
+import { usePoll, useSeenFor } from "@/lib/hooks";
 import { loadPurchases, type DashboardPromo, type PurchaseList } from "@/lib/merchant";
-import { ESCROW_STATE_TEXT } from "@/lib/purchases";
+import { ESCROW_STATE_TEXT, STUCK_AFTER_SECS } from "@/lib/purchases";
 import { useWallet } from "@/lib/wallet/session";
 import {
   BACK_LINK,
@@ -28,12 +28,13 @@ import { Button, Notice, Spinner } from "../ui";
 import { NetworkNote } from "../wallet/NetworkNote";
 
 // Merchant claims, Zahin's layout. Data: the shop's dashboard (GET /api/merchants/:wallet/
-// dashboard) and each promo's purchases (PROPOSED GET /api/promotions/:id/purchases, or read from
-// the Arc escrow when NEXT_PUBLIC_ARC_ESCROW_ADDRESS is set). Claim eligibility comes ONLY from
-// the on-chain escrow state plus the promo's official on-chain resolution, never from the
-// off-chain status. Claiming is POST /api/purchases/claim-merchant (PROPOSED) + Circle approval.
+// dashboard) and each promo's purchases (GET /api/promotions/:id/purchases). Claim eligibility
+// comes ONLY from the on-chain escrow state plus the promo's official on-chain resolution, never
+// from the off-chain status. On escrow v2 (`autoPayout`) the shop is paid automatically after a NO
+// result; POST /api/purchases/claim-merchant (one Circle approval per purchase) is then only the
+// fallback for payments still uncollected a few minutes after this page first saw them due.
 
-type Row = { r: PurchaseReceiptDto; promo: DashboardPromo };
+type Row = { r: PurchaseSummaryDto; promo: DashboardPromo };
 
 const SHOWN = 25;
 
@@ -56,12 +57,19 @@ function outcomeText(promo: DashboardPromo): { text: string; note: string } {
 function eligibility(row: Row): { pill: string; text: string; note: string; rule: string } {
   const s = row.r.onChainState;
   if (canCollect(row)) {
-    return {
-      pill: PILL_PURPLE,
-      text: "Eligible",
-      note: "Covered sale, official outcome no: you can collect it",
-      rule: "border-l-[#6133A7]",
-    };
+    return row.r.autoPayout
+      ? {
+          pill: PILL_PURPLE,
+          text: "Paying out",
+          note: "Covered sale, official outcome no: the escrow pays it to you automatically",
+          rule: "border-l-[#6133A7]",
+        }
+      : {
+          pill: PILL_PURPLE,
+          text: "Eligible",
+          note: "Covered sale, official outcome no: you can collect it",
+          rule: "border-l-[#6133A7]",
+        };
   }
   if (s === "ClaimedByMerchant") {
     return {
@@ -107,7 +115,7 @@ export function ClaimsScreen() {
   const dash = usePoll(shop ? () => api.dashboard(shop) : null, 10_000, [shop, refreshKey]);
   const active = (dash.data?.promotions ?? []).filter((p) => p.status === "ACTIVE" && p.promoPda);
   const ids = active.map((p) => p.id).join(",");
-  const lists = usePoll<Record<string, PurchaseList | null>>(
+  const lists = usePoll<Record<string, PurchaseList>>(
     ids
       ? async () =>
           Object.fromEntries(
@@ -118,7 +126,6 @@ export function ClaimsScreen() {
     [ids, refreshKey],
   );
   const notFound = dash.error instanceof ApiError && dash.error.code === "merchant_not_found";
-  const noList = lists.data ? Object.values(lists.data).some((l) => l === null) : false;
 
   const rows: Row[] = active.flatMap((promo) =>
     (lists.data?.[promo.id]?.rows ?? []).map((r) => ({ r, promo })),
@@ -132,14 +139,23 @@ export function ClaimsScreen() {
           ? 2
           : 3;
   rows.sort((a, b) => order(a) - order(b));
-  const claimable = rows.filter((row) => canCollect(row));
+  const due = rows.filter((row) => canCollect(row));
+  // Escrow v2 pays the shop automatically; the button only collects payments stuck for minutes.
+  const auto = rows.some((row) => row.r.autoPayout);
+  const seenFor = useSeenFor(due.map((row) => `${row.r.purchasePda}:collect`));
+  const claimable = due
+    .filter(
+      (row) => !row.r.autoPayout || seenFor(`${row.r.purchasePda}:collect`) >= STUCK_AFTER_SECS,
+    )
+    .slice(0, 20);
   const claimAmount = claimable.reduce((s, row) => s + BigInt(row.r.amount), 0n);
+  const dueAmount = due.reduce((s, row) => s + BigInt(row.r.amount), 0n);
   const awaiting = rows.filter(
     (row) => row.r.onChainState === "Hedged" && row.promo.onChainState === "Active",
   );
   const collected = rows.filter((row) => row.r.onChainState === "ClaimedByMerchant");
   const sum = (xs: Row[]) => usd(xs.reduce((s, row) => s + BigInt(row.r.amount), 0n));
-  const known = Boolean(shop && lists.data && !noList);
+  const known = Boolean(shop && lists.data);
 
   const OVERVIEW = [
     {
@@ -148,25 +164,35 @@ export function ClaimsScreen() {
       value: known ? `${awaiting.length} · ${sum(awaiting)}` : "–",
     },
     {
-      label: "Claimable now",
-      hint: "Verified from the escrow state on Arc",
-      value: known ? `${claimable.length} · ${usd(claimAmount)}` : "–",
+      label: auto ? "Being paid to you" : "Claimable now",
+      hint: auto
+        ? "Official outcome no, verified on Arc: the escrow is sending these automatically"
+        : "Verified from the escrow state on Arc",
+      value: known ? `${due.length} · ${usd(dueAmount)}` : "–",
     },
     {
-      label: "Completed claims",
-      hint: "Merchant claims confirmed on Arc",
+      label: auto ? "Paid to you" : "Completed claims",
+      hint: auto ? "Payments to the shop confirmed on Arc" : "Merchant claims confirmed on Arc",
       value: known ? `${collected.length} · ${sum(collected)}` : "–",
     },
   ];
 
   async function collect() {
     if (!w.wallet || claimable.length === 0) return;
-    const what = `Collect ${usd(claimAmount)} from ${claimable.length} covered sale${claimable.length === 1 ? "" : "s"}`;
     const keys = claimable.map((row) => row.r.purchasePda);
-    setTx({ status: "awaiting_signature", what });
+    setTx({
+      status: "awaiting_signature",
+      what: `Collect ${usd(claimAmount)} from ${claimable.length} covered sale${claimable.length === 1 ? "" : "s"}`,
+    });
     try {
-      const ch = await api.claimMerchant(keys, w.wallet.id);
-      await w.execute(ch.challengeId, what);
+      // Every key is checked by the server before any challenge exists; then one approval each.
+      const { challenges } = await api.claimMerchant(keys, w.wallet.id);
+      for (const [i, ch] of challenges.entries()) {
+        const row = claimable.find((x) => x.r.purchasePda === ch.purchaseKey);
+        const what = `Collect ${row ? usd(row.r.amount) : "a sale"} for order ${orderNumber(ch.purchaseKey)} (${i + 1} of ${challenges.length})`;
+        setTx({ status: "awaiting_signature", what });
+        await w.execute(ch.challengeId, what);
+      }
       setClaiming(keys);
       setTx({ status: "confirming" });
       setRefreshKey((k) => k + 1);
@@ -266,15 +292,7 @@ export function ClaimsScreen() {
                   </Notice>
                 </div>
               ) : null}
-              {noList ? (
-                <div className="py-5">
-                  <Notice tone="warn" title="No purchase list on this server yet">
-                    Needs GET /api/promotions/:id/purchases on the promo server, or
-                    NEXT_PUBLIC_ARC_ESCROW_ADDRESS in the web app to read purchases from Arc.
-                  </Notice>
-                </div>
-              ) : null}
-              {rows.length === 0 && !noList ? (
+              {rows.length === 0 ? (
                 <p className="border-b border-[#E6E1D8] py-10 text-[15px] text-[#5A5463]">
                   No purchases yet.
                 </p>
@@ -321,8 +339,9 @@ export function ClaimsScreen() {
             <li>Customers pay test USDC into the escrow on Arc when they purchase.</li>
             <li>Gemini provides the officially finalized prediction-market outcome.</li>
             <li>
-              If the refund condition does not occur, you can claim the escrowed USDC for each
-              covered purchase.
+              {auto
+                ? "If the refund condition does not occur, the escrow pays you each covered purchase automatically. This button is only a fallback for a payment still missing after a few minutes."
+                : "If the refund condition does not occur, you can claim the escrowed USDC for each covered purchase."}
             </li>
             <li>
               Eligibility is read from the escrow state on Arc. A status shown by the app is not
@@ -332,7 +351,10 @@ export function ClaimsScreen() {
               The simulated Gemini hedge ledger is separate from the real escrow on Arc. No funds
               move between them.
             </li>
-            <li>A claim is approved by the promotion&apos;s merchant in Circle&apos;s window.</li>
+            <li>
+              A claim is approved by the promotion&apos;s merchant in Circle&apos;s window, one
+              approval per purchase.
+            </li>
           </ul>
           <button
             type="button"
@@ -346,14 +368,20 @@ export function ClaimsScreen() {
             className={`mt-6 ${BTN_BLOCK}`}
           >
             {tx.status === "awaiting_signature" ? <Spinner /> : null}
-            {claimable.length > 0 ? `Claim ${usd(claimAmount)}` : "Claim Funds"}
+            {claimable.length > 0
+              ? `${auto ? "Collect manually: " : "Claim "}${usd(claimAmount)}`
+              : "Claim Funds"}
           </button>
           <p className="mt-3 text-[13px] leading-relaxed text-[#5A5463]">
             {!shop
               ? "Log in as the shop to claim."
               : claimable.length > 0
-                ? `${claimable.length} covered sale${claimable.length === 1 ? "" : "s"} with an official "no" outcome. One approval collects them all.`
-                : "Nothing is claimable right now, so this button is disabled."}
+                ? `${claimable.length} covered sale${claimable.length === 1 ? "" : "s"} with an official "no" outcome${auto ? " still unpaid after a few minutes" : ""}. One approval each in Circle's window.`
+                : auto && due.length > 0
+                  ? `${due.length} payment${due.length === 1 ? " is" : "s are"} on the way to your wallet automatically. Nothing to do.`
+                  : auto
+                    ? "Payments come to your wallet automatically, so there is nothing to claim."
+                    : "Nothing is claimable right now, so this button is disabled."}
           </p>
           {tx.status !== "idle" ? (
             <TransactionStatus state={shownTx} explorerTx={chain().explorerTx} className="mt-4" />

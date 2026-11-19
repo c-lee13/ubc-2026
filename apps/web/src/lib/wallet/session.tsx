@@ -14,7 +14,12 @@ import { ApiError, type WalletDto } from "../api";
 import { api, setUserToken } from "../client";
 import { publicConfig } from "../config";
 import { describe, type Problem } from "../errors";
-import { WalletUserError, type CircleSession, type WalletDriver } from "./driver";
+import {
+  WalletUserError,
+  type ChallengeOutcome,
+  type CircleSession,
+  type WalletDriver,
+} from "./driver";
 
 /**
  * The signed-in person: email login through Circle (docs/email-wallets.md), their Arc wallet, and
@@ -36,7 +41,8 @@ interface WalletState {
   login(email: string): Promise<void>;
   logout(): void;
   refreshWallet(): Promise<WalletDto | null>;
-  execute(challengeId: string, what: string): Promise<void>;
+  /** Approve a challenge in Circle's window; sign challenges resolve with the signature. */
+  execute(challengeId: string, what: string): Promise<ChallengeOutcome>;
   clearProblem(): void;
 }
 
@@ -199,7 +205,7 @@ export function WalletSessionProvider({ children }: { children: ReactNode }) {
     async (challengeId: string, what: string) => {
       setApproving(what);
       try {
-        await (await driver()).execute(challengeId, what);
+        return await (await driver()).execute(challengeId, what);
       } finally {
         setApproving(null);
       }

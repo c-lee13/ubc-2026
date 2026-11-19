@@ -3,9 +3,9 @@ import {
   ApiError,
   type CreatePromotionDto,
   type DashboardDto,
-  type PurchaseReceiptDto,
+  type PurchaseSummaryDto,
 } from "./api";
-import { api, chain } from "./client";
+import { api } from "./client";
 import { store } from "./hooks";
 
 /**
@@ -32,7 +32,7 @@ export function windowUsable(w: MarketWindow, now: number): { ok: boolean; why?:
 export interface LocalDraft {
   promotionId: string;
   init: CreatePromotionDto["initializePromo"];
-  /** bytes32 promo id, once the wallet approved creating it. */
+  /** bytes32 promo id (the initialize call's promoPda), once the wallet approved creating it. */
   promoId?: string;
 }
 export const draftKey = (merchant: string) => `hedged:drafts:${merchant}`;
@@ -63,7 +63,7 @@ export async function confirmWithRetry(promotionId: string, promoPda: string): P
     } catch (err) {
       const retry = err instanceof ApiError && err.code === "promo_not_found_on_chain_yet";
       if (!retry || Date.now() > end) throw err;
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 2000));
     }
   }
 }
@@ -71,30 +71,12 @@ export async function confirmWithRetry(promotionId: string, promoPda: string): P
 /* ---------- a promo's purchases ---------- */
 
 export interface PurchaseList {
-  rows: PurchaseReceiptDto[];
-  /** Where the list came from, for the honest footnote. */
-  source: "api" | "chain";
+  rows: PurchaseSummaryDto[];
 }
 
-/**
- * A promo's purchases. Preferred: GET /api/promotions/:id/purchases (PROPOSED, not in apps/api
- * yet). Fallback: read the purchase keys from the Arc escrow (needs NEXT_PUBLIC_ARC_ESCROW_ADDRESS)
- * and fetch each receipt. Null when neither is available.
- */
-export async function loadPurchases(p: {
-  id: string;
-  promoPda: string | null;
-}): Promise<PurchaseList | null> {
-  try {
-    return { rows: (await api.promotionPurchases(p.id)).purchases, source: "api" };
-  } catch (err) {
-    if (!(err instanceof ApiError && err.status === 404)) throw err;
-  }
-  const reads = chain().reads;
-  if (!reads || !p.promoPda) return null;
-  const onChain = await reads.purchasesOf(p.promoPda);
-  const rows = await Promise.all(onChain.map((c) => api.purchase(c.purchasePda).catch(() => null)));
-  return { rows: rows.filter((r): r is PurchaseReceiptDto => r !== null), source: "chain" };
+/** A promo's purchases, newest first (GET /api/promotions/:id/purchases, max 50). */
+export async function loadPurchases(p: { id: string }): Promise<PurchaseList> {
+  return { rows: (await api.promotionPurchases(p.id)).purchases };
 }
 
 /** Totals across a shop's promos (hedge figures are SIMULATED). */

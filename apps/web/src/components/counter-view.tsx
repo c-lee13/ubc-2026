@@ -1,7 +1,7 @@
 "use client";
 
-import { ApiError, pauseText, type PurchaseReceiptDto } from "@/lib/api";
-import { api, chain } from "@/lib/client";
+import { pauseText, type PurchaseSummaryDto } from "@/lib/api";
+import { api } from "@/lib/client";
 import { describe } from "@/lib/errors";
 import { chance, conditionText, countdown, orderNumber, usd } from "@/lib/format";
 import { useNowSeconds, useOrigin, usePoll } from "@/lib/hooks";
@@ -11,33 +11,16 @@ import { Notice, Spinner } from "./ui";
 /**
  * The barista's screen: the promo's QR code for customers to scan, and the live order feed. An
  * order says "Paid & hedged: serve" only when the server's canServe is true (the payment is in the
- * escrow and the hedge is confirmed); a failed hedge says don't serve.
+ * escrow and the hedge is confirmed); a failed hedge says don't serve. The feed is
+ * GET /api/promotions/:id/purchases (newest first), polled every 3 s; its 4-character `orderCode`
+ * is the one on the customer's receipt.
  */
 export function CounterView({ promoId }: { promoId: string }) {
   const origin = useOrigin();
   const now = useNowSeconds();
   const promo = usePoll(() => api.promotion(promoId), 10_000, [promoId]);
   const p = promo.data?.promotion;
-  const orders = usePoll<{ rows: PurchaseReceiptDto[]; source: string } | null>(
-    p
-      ? async () => {
-          try {
-            return { rows: (await api.promotionPurchases(p.id)).purchases, source: "api" };
-          } catch (err) {
-            if (!(err instanceof ApiError && err.status === 404)) throw err;
-          }
-          const reads = chain().reads;
-          if (!reads || !p.promoPda) return null;
-          const keys = await reads.purchasesOf(p.promoPda);
-          const rows = await Promise.all(
-            keys.map((k) => api.purchase(k.purchasePda).catch(() => null)),
-          );
-          return { rows: rows.filter((r): r is PurchaseReceiptDto => r !== null), source: "chain" };
-        }
-      : null,
-    3_000,
-    [p?.id],
-  );
+  const orders = usePoll(p ? () => api.promotionPurchases(p.id) : null, 3_000, [p?.id]);
 
   if (!p) {
     return promo.error ? (
@@ -55,7 +38,7 @@ export function CounterView({ promoId }: { promoId: string }) {
   const cond = conditionText(p.outcomeLabel, p.geminiMarketId);
   const live = p.live;
   const selling = live?.phase === "LIVE";
-  const rows = [...(orders.data?.rows ?? [])].reverse();
+  const rows = orders.data?.purchases ?? [];
 
   return (
     <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-12">
@@ -122,11 +105,7 @@ export function CounterView({ promoId }: { promoId: string }) {
         </div>
 
         <div className="mt-5 space-y-3">
-          {orders.data === null ? (
-            <Notice tone="warn" title="No order feed on this server yet">
-              Needs GET /api/promotions/:id/purchases.
-            </Notice>
-          ) : orders.data === undefined ? (
+          {orders.data === undefined ? (
             orders.error ? (
               <Notice tone="error" title={describe(orders.error).title}>
                 {describe(orders.error).detail}
@@ -149,7 +128,7 @@ export function CounterView({ promoId }: { promoId: string }) {
   );
 }
 
-function OrderRow({ r, item }: { r: PurchaseReceiptDto; item: string }) {
+function OrderRow({ r, item }: { r: PurchaseSummaryDto; item: string }) {
   const refund = r.step === "REFUNDING" || r.step === "REFUND_READY" || r.step === "REFUNDED";
   const tone = r.canServe
     ? "bg-ribbon text-white"
@@ -160,7 +139,9 @@ function OrderRow({ r, item }: { r: PurchaseReceiptDto; item: string }) {
     <div
       className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-1 rounded-2xl px-6 py-5 ${tone}`}
     >
-      <span className="font-display text-[64px] leading-none">{orderNumber(r.purchasePda)}</span>
+      <span className="font-display text-[64px] leading-none">
+        {r.orderCode ? `#${r.orderCode}` : orderNumber(r.purchasePda)}
+      </span>
       <span className="text-right">
         <span className="font-display block text-[40px] leading-none">
           {r.canServe ? "Serve" : refund ? "Don't serve" : "Wait"}

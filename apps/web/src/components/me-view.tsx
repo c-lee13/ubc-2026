@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { PurchaseReceiptDto } from "@/lib/api";
 import { api } from "@/lib/client";
+import { describe } from "@/lib/errors";
 import { orderNumber, usd } from "@/lib/format";
 import { store, usePoll } from "@/lib/hooks";
 import { useWallet } from "@/lib/wallet/session";
@@ -12,21 +12,21 @@ import { LoginCard } from "./login-card";
 import { Spinner } from "./ui";
 
 /**
- * Customer: balance in dollars (refunds land here) and the promos bought from this browser.
- * The API has no "purchases of this customer" route yet, so the list is this device's receipts.
+ * Customer: balance in dollars (refunds land here) and their purchases, newest first, from the
+ * server (GET /api/purchases?customer=<wallet>). Payments made in this browser that the server
+ * hasn't seen yet are listed too, as "waiting".
  */
 export function MeView() {
   const w = useWallet();
   const ready = w.phase === "ready" && w.wallet;
-  const mine = ready ? (store.get<MyPurchase[]>(myPurchasesKey(w.wallet!.address)) ?? []) : [];
-  const keys = mine.map((m) => m.purchaseKey).join(",");
-  const receipts = usePoll<(PurchaseReceiptDto | null)[]>(
-    ready && mine.length
-      ? () => Promise.all(mine.map((m) => api.purchase(m.purchaseKey).catch(() => null)))
-      : null,
-    6_000,
-    [keys],
-  );
+  const address = ready ? w.wallet!.address : null;
+  const list = usePoll(address ? () => api.customerPurchases(address) : null, 6_000, [address]);
+  const server = list.data?.purchases ?? [];
+  const known = new Set(server.map((r) => r.purchasePda.toLowerCase()));
+  const pending = (address ? (store.get<MyPurchase[]>(myPurchasesKey(address)) ?? []) : [])
+    .filter((m) => !known.has(m.purchaseKey.toLowerCase()))
+    .reverse();
+  const empty = list.data !== undefined && server.length === 0 && pending.length === 0;
 
   if (!ready) {
     return (
@@ -55,7 +55,16 @@ export function MeView() {
         <h2 id="mine" className="font-wide text-[20px] font-bold">
           Your orders
         </h2>
-        {mine.length === 0 ? (
+        {list.error && !list.data ? (
+          <p className="text-[13px] text-ink-soft">
+            {describe(list.error).title}. {describe(list.error).detail}
+          </p>
+        ) : null}
+        {list.data === undefined && !list.error ? (
+          <p className="flex items-center gap-2 text-ink-soft">
+            <Spinner /> Loading your orders…
+          </p>
+        ) : empty ? (
           <div className="rounded-2xl border border-dashed border-ink/25 px-5 py-8 text-center text-ink-soft">
             No orders yet.{" "}
             <Link href="/discover" className="font-semibold text-ink underline">
@@ -65,32 +74,40 @@ export function MeView() {
           </div>
         ) : (
           <ul className="space-y-2">
-            {[...mine].reverse().map((m) => {
-              const r = receipts.data?.[mine.indexOf(m)] ?? null;
-              return (
-                <li key={m.purchaseKey}>
-                  <Link
-                    href={`/purchases/${m.purchaseKey}`}
-                    className="flex items-center gap-4 rounded-2xl bg-paper-raised px-4 py-3 ring-1 ring-ink/10 hover:ring-ink/40"
-                  >
-                    <span className="font-display text-[22px]">{orderNumber(m.purchaseKey)}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">
-                        {r ? `${r.promotion.itemName} at ${r.promotion.shopName}` : "Purchase"}
-                      </span>
-                      <span className="block text-[13px] text-ink-soft">
-                        {r ? r.message : receipts.loading ? "Loading…" : "Waiting for the server…"}
-                      </span>
+            {pending.map((m) => (
+              <li key={m.purchaseKey}>
+                <Link
+                  href={`/purchases/${m.purchaseKey}`}
+                  className="flex items-center gap-4 rounded-2xl bg-paper-raised px-4 py-3 ring-1 ring-ink/10 hover:ring-ink/40"
+                >
+                  <span className="font-display text-[22px]">{orderNumber(m.purchaseKey)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">Purchase</span>
+                    <span className="block text-[13px] text-ink-soft">Waiting for the server…</span>
+                  </span>
+                  <Spinner />
+                </Link>
+              </li>
+            ))}
+            {server.map((r) => (
+              <li key={r.purchasePda}>
+                <Link
+                  href={`/purchases/${r.purchasePda}`}
+                  className="flex items-center gap-4 rounded-2xl bg-paper-raised px-4 py-3 ring-1 ring-ink/10 hover:ring-ink/40"
+                >
+                  <span className="font-display text-[22px]">
+                    {r.orderCode ? `#${r.orderCode}` : orderNumber(r.purchasePda)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">
+                      {r.promotion.itemName} at {r.promotion.shopName}
                     </span>
-                    {r ? (
-                      <span className="shrink-0 font-semibold">{usd(r.amount)}</span>
-                    ) : (
-                      <Spinner />
-                    )}
-                  </Link>
-                </li>
-              );
-            })}
+                    <span className="block text-[13px] text-ink-soft">{r.message}</span>
+                  </span>
+                  <span className="shrink-0 font-semibold">{usd(r.amount)}</span>
+                </Link>
+              </li>
+            ))}
           </ul>
         )}
       </section>

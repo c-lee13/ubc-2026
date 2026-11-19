@@ -4,7 +4,12 @@ import type {
   LoginConfigs,
 } from "@circle-fin/w3s-pw-web-sdk/dist/src/types";
 import type { EmailLoginDto } from "../api";
-import { WalletUserError, type CircleSession, type WalletDriver } from "./driver";
+import {
+  WalletUserError,
+  type ChallengeOutcome,
+  type CircleSession,
+  type WalletDriver,
+} from "./driver";
 
 /**
  * Circle user-controlled wallets, email login (docs/email-wallets.md), on the official web SDK.
@@ -12,7 +17,8 @@ import { WalletUserError, type CircleSession, type WalletDriver } from "./driver
  *
  * Login:  getDeviceId -> (POST /api/wallet/email-login) -> updateConfigs + verifyOtp -> callback
  *         gives { userToken, encryptionKey } -> setAuthentication.
- * Money:  every challengeId from our API is approved here with sdk.execute.
+ * Money:  every challengeId from our API is approved here with sdk.execute. A typed-data
+ *         challenge (one-tap checkout) resolves with its signature for POST .../submit.
  */
 export async function createCircleDriver(appId: string): Promise<WalletDriver> {
   const { W3SSdk } = await import("@circle-fin/w3s-pw-web-sdk");
@@ -62,7 +68,7 @@ export async function createCircleDriver(appId: string): Promise<WalletDriver> {
     setAuthentication: (s) => sdk.setAuthentication(s),
 
     execute(challengeId: string) {
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<ChallengeOutcome>((resolve, reject) => {
         const done: ChallengeCompleteCallback = (error, result) => {
           if (error) {
             reject(
@@ -85,7 +91,9 @@ export async function createCircleDriver(appId: string): Promise<WalletDriver> {
             );
             return;
           }
-          resolve();
+          // Sign challenges (one-tap checkout) carry the signature in result.data.signature.
+          const data = (result as { data?: { signature?: unknown } } | undefined)?.data;
+          resolve(typeof data?.signature === "string" ? { signature: data.signature } : {});
         };
         sdk.execute(challengeId, done);
       });

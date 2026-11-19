@@ -1,34 +1,55 @@
 /**
  * DEV-ONLY FIXTURE. Never live: loaded only when NEXT_PUBLIC_WALLET_FIXTURE=1 in a non-production
  * build (see config.ts). It lets the Circle email-login checkout be clicked through without a
- * Circle App ID or a real email code, by mocking in the browser:
+ * Circle App ID or a real email code, by mocking in the browser, in the shapes of
+ * docs/FRONTEND-API.md:
  *   - Circle's code and approval screens (stand-in sheets, clearly labeled),
- *   - /api/wallet/*, /api/checkout/*, receipts of fixture purchases, and the PROPOSED merchant and
- *     claim routes (initialize, purchases, claim-refund, claim-merchant),
+ *   - /api/wallet/*, /api/checkout/* (one-tap sign + submit; approve + deposit in v1 mode),
+ *     receipts and purchase lists of fixture purchases, and the shop and claim routes
+ *     (initialize, counter feed, customer purchases, claim-refund, cancel-expired, claim-merchant),
  *   - promos created here (kept in localStorage, never written to the real API).
+ * It behaves like escrow v2 (one-tap checkout, automatic payouts). To try the v1 fallback (approve +
+ * deposit, claim buttons) run `localStorage.setItem("hedged:fixture:escrow", "v1")` and reload.
  * Market data stays REAL: windows, quotes, deadline checks and official outcomes are fetched from
- * the real API, so prices and results are live; only the wallet and the chain side are faked.
+ * the API (or scripts/sample-api.mjs), so only the wallet and the chain side are faked.
  */
 import { promoIdOf, purchaseKeyOf } from "@hedged/arc";
 import type { Address, Hex } from "viem";
 import type {
   CreatePromotionInput,
+  CustomerPurchaseDto,
   LiveStateDto,
   PauseReason,
   PromotionDto,
   PromoStatsDto,
   PurchaseReceiptDto,
+  PurchaseSummaryDto,
   ReceiptStep,
   Transport,
 } from "../api";
 import { marketMeaning } from "../format";
-import type { CircleSession, WalletDriver } from "./driver";
+import type { ChallengeOutcome, CircleSession, WalletDriver } from "./driver";
 import { WalletUserError } from "./driver";
 import { showFixtureSheet } from "./fixture-bus";
 
-const KEY = "hedged:fixture:v1";
+const KEY = "hedged:fixture:v2";
 const ALLOWANCE_CAP = 100_000_000n;
 const DRIP = 20_000_000n;
+/** Same as the API: a one-tap signature is valid 5 minutes (capped at the deadline). */
+const SIGNATURE_TTL_SECS = 300;
+/** Demo cancel timeout on Arc (the customer may cancel a still-uncovered payment after it). */
+const CANCEL_TIMEOUT_SECS = 600;
+/** Automatic payouts (v2) land this long after they become due. */
+const AUTO_PAYOUT_DELAY_SECS = 3;
+
+/** Escrow v2 (default): one-tap + automatic payouts. "v1": approve + deposit + claim buttons. */
+const isV1 = () => {
+  try {
+    return window.localStorage.getItem("hedged:fixture:escrow") === "v1";
+  } catch {
+    return false;
+  }
+};
 
 interface FxWallet {
   id: string;
@@ -57,6 +78,7 @@ interface FxPromo {
   reservedPremium: string;
   initialized: boolean;
   resolvedOutcome: "YES" | "NO" | null;
+  resolvedAt: number | null;
 }
 interface FxPurchase {
   key: string;
@@ -75,14 +97,33 @@ interface FxPurchase {
   } | null;
   markTx: string | null;
   cancelTx: string | null;
+  cancelledAt: number | null;
   claimTx: string | null;
   claimedBy: "customer" | "merchant" | null;
 }
 interface FxChallenge {
   id: string;
-  kind: "init" | "approve" | "deposit" | "initialize" | "claim-refund" | "claim-merchant";
+  kind:
+    | "init"
+    | "approve"
+    | "deposit"
+    | "sign"
+    | "initialize"
+    | "claim-refund"
+    | "cancel-expired"
+    | "claim-merchant";
   walletId: string;
   ref: string[];
+}
+/** A one-tap payment authorization the fixture "signed" (sign challenge approved). */
+interface FxSignature {
+  walletId: string;
+  promotionId: string;
+  key: string;
+  ask: string;
+  purchaseIdHex: string;
+  validBefore: number;
+  used: boolean;
 }
 interface FxState {
   wallets: Record<string, FxWallet>;
@@ -90,6 +131,7 @@ interface FxState {
   promos: FxPromo[];
   purchases: FxPurchase[];
   challenges: Record<string, FxChallenge>;
+  signatures: Record<string, FxSignature>;
 }
 
 /* ---------- storage + ids ---------- */
@@ -97,11 +139,14 @@ interface FxState {
 function load(): FxState {
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as FxState;
+    if (raw) {
+      const st = JSON.parse(raw) as Omit<FxState, "signatures"> & Partial<FxState>;
+      return { ...st, signatures: st.signatures ?? {} };
+    }
   } catch {
     // fall through
   }
-  return { wallets: {}, tokens: {}, promos: [], purchases: [], challenges: {} };
+  return { wallets: {}, tokens: {}, promos: [], purchases: [], challenges: {}, signatures: {} };
 }
 function save(s: FxState) {
   window.localStorage.setItem(KEY, JSON.stringify(s));
@@ -150,14 +195,13 @@ export function createFixtureDriver(): WalletDriver {
     },
     setAuthentication() {},
     execute(challengeId, what) {
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<ChallengeOutcome>((resolve, reject) => {
         showFixtureSheet({
           kind: "approve",
           what,
           resolve: () => {
             showFixtureSheet(null);
-            completeChallenge(challengeId);
-            resolve();
+            resolve(completeChallenge(challengeId));
           },
           reject: () => {
             showFixtureSheet(null);
@@ -171,13 +215,17 @@ export function createFixtureDriver(): WalletDriver {
   };
 }
 
-function completeChallenge(id: string) {
+function completeChallenge(id: string): ChallengeOutcome {
   const s = load();
   const c = s.challenges[id];
-  if (!c) return;
+  if (!c) return {};
   delete s.challenges[id];
   const w = s.wallets[c.walletId];
-  if (!w) return save(s);
+  if (!w) {
+    save(s);
+    return {};
+  }
+  let outcome: ChallengeOutcome = {};
   switch (c.kind) {
     case "init":
       w.initialized = true;
@@ -189,22 +237,32 @@ function completeChallenge(id: string) {
       const [promotionId, key, ask] = c.ref;
       const promo = s.promos.find((p) => p.id === promotionId);
       if (!promo || !key) break;
-      w.balance = (BigInt(w.balance) - BigInt(promo.offerAmount)).toString();
       w.allowance = (BigInt(w.allowance) - BigInt(promo.offerAmount)).toString();
-      s.purchases.push({
-        key,
-        promotionId: promo.id,
-        customer: w.address,
-        amount: promo.offerAmount,
-        depositedAt: nowS(),
-        askAtDeposit: ask || null,
-        depositTx: fakeHash(),
-        hedge: null,
-        markTx: null,
-        cancelTx: null,
-        claimTx: null,
-        claimedBy: null,
-      });
+      recordDeposit(s, w, promo, key, ask ?? "");
+      break;
+    }
+    case "sign": {
+      // A stand-in EIP-3009 signature: the fixture's submit route accepts it once.
+      const [promotionId, key, ask, purchaseIdHex, validBefore] = c.ref;
+      const signature = `0x${hex(65)}`;
+      s.signatures[signature] = {
+        walletId: w.id,
+        promotionId: promotionId ?? "",
+        key: key ?? "",
+        ask: ask ?? "",
+        purchaseIdHex: purchaseIdHex ?? "",
+        validBefore: Number(validBefore),
+        used: false,
+      };
+      outcome = { signature };
+      break;
+    }
+    case "cancel-expired": {
+      const p = s.purchases.find((x) => x.key === c.ref[0]);
+      if (p && !p.markTx && !p.cancelTx) {
+        p.cancelTx = fakeHash();
+        p.cancelledAt = nowS();
+      }
       break;
     }
     case "initialize": {
@@ -216,16 +274,46 @@ function completeChallenge(id: string) {
     case "claim-merchant": {
       for (const key of c.ref) {
         const p = s.purchases.find((x) => x.key === key);
-        if (!p) continue;
-        p.claimTx = fakeHash();
-        p.claimedBy = c.kind === "claim-refund" ? "customer" : "merchant";
-        const amount = BigInt(p.amount);
-        w.balance = (BigInt(w.balance) + amount).toString();
+        if (!p || p.claimedBy) continue;
+        payOut(s, p, c.kind === "claim-refund" ? "customer" : "merchant");
       }
       break;
     }
   }
   save(s);
+  return outcome;
+}
+
+/** The payment lands in the escrow (deposit, or the relayer's one-tap submit). */
+function recordDeposit(s: FxState, w: FxWallet, promo: FxPromo, key: string, ask: string) {
+  w.balance = (BigInt(w.balance) - BigInt(promo.offerAmount)).toString();
+  const tx = fakeHash();
+  s.purchases.push({
+    key,
+    promotionId: promo.id,
+    customer: w.address,
+    amount: promo.offerAmount,
+    depositedAt: nowS(),
+    askAtDeposit: ask || null,
+    depositTx: tx,
+    hedge: null,
+    markTx: null,
+    cancelTx: null,
+    cancelledAt: null,
+    claimTx: null,
+    claimedBy: null,
+  });
+  return tx;
+}
+
+/** Escrow pays a purchase out (a claim, or v2's automatic payout): credit the receiving wallet. */
+function payOut(s: FxState, p: FxPurchase, to: "customer" | "merchant") {
+  const promo = s.promos.find((x) => x.id === p.promotionId);
+  const addr = to === "customer" ? p.customer : promo?.merchant;
+  p.claimTx = fakeHash();
+  p.claimedBy = to;
+  const w = Object.values(s.wallets).find((x) => x.address === addr);
+  if (w) w.balance = (BigInt(w.balance) + BigInt(p.amount)).toString();
 }
 
 /* ---------- the mocked API ---------- */
@@ -267,7 +355,10 @@ export function createFixtureTransport(real: Transport): Transport {
         );
         if (!r.ok) continue;
         const o = (await r.json()) as { outcome: { outcome: "YES" | "NO" } | null };
-        if (o.outcome) promo.resolvedOutcome = o.outcome.outcome;
+        if (o.outcome) {
+          promo.resolvedOutcome = o.outcome.outcome;
+          promo.resolvedAt = nowS();
+        }
       } catch {
         // stays pending
       }
@@ -300,9 +391,25 @@ export function createFixtureTransport(real: Transport): Transport {
           };
         }
       }
-      if (p.hedge?.status === "FAILED" && !p.cancelTx && age >= 6) p.cancelTx = fakeHash();
+      if (p.hedge?.status === "FAILED" && !p.cancelTx && age >= 6) {
+        p.cancelTx = fakeHash();
+        p.cancelledAt = nowS();
+      }
       if (p.hedge?.status === "SIMULATED_FILLED" && promo.resolvedOutcome) {
         p.hedge.status = promo.resolvedOutcome === "YES" ? "SETTLED_WIN" : "SETTLED_LOSS";
+      }
+      // Escrow v2: the relayer pays out on its own (refund after a cancel; YES -> customer,
+      // NO -> shop after the result).
+      if (!isV1() && !p.claimedBy) {
+        if (p.cancelTx && nowS() - (p.cancelledAt ?? p.depositedAt) >= AUTO_PAYOUT_DELAY_SECS) {
+          payOut(s, p, "customer");
+        } else if (
+          p.markTx &&
+          promo.resolvedOutcome &&
+          nowS() - (promo.resolvedAt ?? 0) >= AUTO_PAYOUT_DELAY_SECS
+        ) {
+          payOut(s, p, promo.resolvedOutcome === "YES" ? "customer" : "merchant");
+        }
       }
     }
   }
@@ -332,14 +439,16 @@ export function createFixtureTransport(real: Transport): Transport {
               : p.hedge?.status === "FAILED"
                 ? "HEDGE_FAILED"
                 : "PENDING_HEDGE";
-    const r = receiptStep(status, promo.resolvedOutcome);
+    const r = receiptStep(status, promo.resolvedOutcome, !isV1());
     return {
       purchasePda: p.key,
+      orderCode: p.key.slice(-4).toUpperCase(),
       customer: p.customer,
       amount: p.amount,
       status,
       onChainState,
       ...r,
+      autoPayout: !isV1(),
       promotion: {
         id: promo.id,
         shopName: promo.shopName,
@@ -365,6 +474,25 @@ export function createFixtureTransport(real: Transport): Transport {
         cancel: p.cancelTx,
         claim: p.claimTx,
       },
+    };
+  }
+
+  /** A list row (counter feed, customer purchases), from the full receipt. */
+  function summary(p: FxPurchase, promo: FxPromo): PurchaseSummaryDto {
+    const r = receipt(p, promo);
+    return {
+      purchasePda: r.purchasePda,
+      orderCode: r.orderCode,
+      customer: r.customer,
+      amount: r.amount,
+      depositedAt: p.depositedAt,
+      status: r.status,
+      onChainState: r.onChainState,
+      step: r.step,
+      canServe: r.canServe,
+      message: r.message,
+      autoPayout: r.autoPayout,
+      receipt: `/api/purchases/${p.key}`,
     };
   }
 
@@ -470,6 +598,7 @@ export function createFixtureTransport(real: Transport): Transport {
         reservedPremium: "0",
         initialized: true,
         resolvedOutcome: null,
+        resolvedAt: null,
       });
     } catch {
       // no seed without live windows
@@ -556,11 +685,11 @@ export function createFixtureTransport(real: Transport): Transport {
         w.lastDrip = Date.now();
         return done(200, { ok: true, address: w.address, testnet: true });
       }
-      const m = /^\/api\/checkout\/([^/]+)\/(status|approve|deposit)$/.exec(path);
+      const m = /^\/api\/checkout\/([^/]+)\/(status|approve|deposit|sign|submit)$/.exec(path);
       if (m) {
         const promo = s.promos.find((p) => p.id === decodeURIComponent(m[1]!));
         if (!promo || promo.status !== "ACTIVE") {
-          // Promos from the real API (Solana) exist but are not Arc promos.
+          // Promos from the API / sample server exist but are not fixture (wallet-payable) promos.
           const r = await real(`${base}/api/promotions/${m[1]}`, { cache: "no-store" }).catch(
             () => null,
           );
@@ -574,6 +703,12 @@ export function createFixtureTransport(real: Transport): Transport {
         const price = BigInt(promo.offerAmount);
         const balance = BigInt(w.balance);
         const allowance = BigInt(w.allowance);
+        const v1 = isV1();
+        const refusal = !dto.live?.canBuy
+          ? { error: "promo_not_buyable", pauseReason: dto.live?.pauseReason ?? null }
+          : balance < price
+            ? { error: "insufficient_usdc" }
+            : null;
         if (m[2] === "status") {
           return json(200, {
             promoId: promo.id,
@@ -582,7 +717,72 @@ export function createFixtureTransport(real: Transport): Transport {
             pauseReason: dto.live?.pauseReason ?? null,
             usdcBalance: w.balance,
             enoughBalance: balance >= price,
-            needsApproval: allowance < price,
+            checkout: v1 ? "approve-deposit" : "one-tap",
+            needsApproval: v1 && allowance < price,
+          });
+        }
+        if (m[2] === "sign") {
+          if (v1) return json(409, { error: "one_tap_unavailable" });
+          if (refusal) return json(409, refusal);
+          const purchaseIdHex = hex(16);
+          const key = purchaseKeyOf(
+            promo.promoPda as Hex,
+            w.address as Address,
+            purchaseIdHex,
+          ).toLowerCase();
+          const validBefore = Math.min(nowS() + SIGNATURE_TTL_SECS, promo.depositDeadline);
+          return done(200, {
+            step: "sign",
+            challengeId: challenge(s, "sign", w.id, [
+              promo.id,
+              key,
+              dto.live?.liveAskMicroUsd ?? "",
+              purchaseIdHex,
+              String(validBefore),
+            ]),
+            purchaseIdHex,
+            purchaseKey: key,
+            validBefore,
+            submit: `/api/checkout/${promo.id}/submit`,
+          });
+        }
+        if (m[2] === "submit") {
+          if (v1) return json(409, { error: "one_tap_unavailable" });
+          const sig = typeof body.signature === "string" ? s.signatures[body.signature] : undefined;
+          if (typeof body.purchaseIdHex !== "string" || !/^[0-9a-f]{32}$/.test(body.purchaseIdHex))
+            return json(400, { error: "invalid_purchase_id" });
+          if (typeof body.validBefore !== "number")
+            return json(400, { error: "invalid_valid_before" });
+          if (!sig) return json(400, { error: "invalid_signature" });
+          if (body.validBefore <= nowS()) return json(409, { error: "signature_expired" });
+          if (
+            sig.walletId !== w.id ||
+            sig.promotionId !== promo.id ||
+            sig.purchaseIdHex !== body.purchaseIdHex ||
+            sig.validBefore !== body.validBefore
+          ) {
+            return json(409, { error: "deposit_rejected", message: "Fixture: signature mismatch" });
+          }
+          const receiptPath = `/api/purchases/${sig.key}`;
+          if (sig.used) {
+            const prior = s.purchases.find((x) => x.key === sig.key);
+            return json(200, {
+              step: "submitted",
+              purchaseKey: sig.key,
+              receipt: receiptPath,
+              txHash: prior?.depositTx ?? null,
+              alreadyApplied: true,
+            });
+          }
+          if (refusal) return json(409, refusal);
+          sig.used = true;
+          const txHash = recordDeposit(s, w, promo, sig.key, sig.ask);
+          return done(200, {
+            step: "submitted",
+            purchaseKey: sig.key,
+            receipt: receiptPath,
+            txHash,
+            alreadyApplied: false,
           });
         }
         if (m[2] === "approve") {
@@ -593,13 +793,7 @@ export function createFixtureTransport(real: Transport): Transport {
             allowance: ALLOWANCE_CAP.toString(),
           });
         }
-        if (!dto.live?.canBuy) {
-          return json(409, {
-            error: "promo_not_buyable",
-            pauseReason: dto.live?.pauseReason ?? null,
-          });
-        }
-        if (balance < price) return json(409, { error: "insufficient_usdc" });
+        if (refusal) return json(409, refusal);
         if (allowance < price) return json(409, { error: "approval_needed" });
         const purchaseIdHex = hex(16);
         const key = purchaseKeyOf(
@@ -612,7 +806,7 @@ export function createFixtureTransport(real: Transport): Transport {
           challengeId: challenge(s, "deposit", w.id, [
             promo.id,
             key,
-            dto.live.liveAskMicroUsd ?? "",
+            dto.live?.liveAskMicroUsd ?? "",
           ]),
           purchaseIdHex,
           purchaseKey: key,
@@ -623,22 +817,69 @@ export function createFixtureTransport(real: Transport): Transport {
       if (init2) {
         const promo = s.promos.find((p) => p.id === decodeURIComponent(init2[1]!));
         if (!promo) return json(404, { error: "promotion_not_found" });
-        if (body.walletId !== w.id || promo.merchant !== w.address) {
-          return json(404, { error: "wallet_not_found" });
-        }
+        if (promo.status !== "DRAFT") return json(409, { error: "already_published" });
+        if (promo.depositDeadline <= nowS()) return json(409, { error: "deadline_passed" });
+        if (body.walletId !== w.id) return json(404, { error: "wallet_not_found" });
+        if (promo.merchant !== w.address) return json(403, { error: "not_this_shops_wallet" });
         return done(200, {
           challengeId: challenge(s, "initialize", w.id, [promo.id]),
-          promoId: promo.promoPda,
+          promoPda: promo.promoPda,
+          confirm: `/api/promotions/${promo.id}/confirm`,
         });
       }
       if (path === "/api/purchases/claim-merchant") {
-        const keys = (body.purchaseKeys as string[]) ?? [];
-        return done(200, { challengeId: challenge(s, "claim-merchant", w.id, keys) });
+        if (body.walletId !== w.id) return json(404, { error: "wallet_not_found" });
+        const raw = body.purchaseKeys;
+        if (!Array.isArray(raw) || raw.length === 0 || raw.length > 20) {
+          return json(400, { error: "invalid_purchase_keys" });
+        }
+        const keys = [...new Set(raw.map((k) => String(k).toLowerCase()))];
+        for (const key of keys) {
+          const p = s.purchases.find((x) => x.key === key);
+          const promo = p && s.promos.find((x) => x.id === p.promotionId);
+          if (!p || !promo) return json(404, { error: "purchase_not_found", purchaseKey: key });
+          if (promo.merchant !== w.address) {
+            return json(403, { error: "not_this_shops_purchase", purchaseKey: key });
+          }
+          if (chainState(p, promo) !== "Hedged" || promo.resolvedOutcome !== "NO") {
+            return json(409, { error: "nothing_to_collect", purchaseKey: key });
+          }
+        }
+        return done(200, {
+          challenges: keys.map((k) => ({
+            purchaseKey: k,
+            challengeId: challenge(s, "claim-merchant", w.id, [k]),
+          })),
+        });
       }
       const pc = /^\/api\/purchases\/([^/]+)\/(claim-refund|cancel-expired)$/.exec(path);
       if (pc) {
-        if (pc[2] === "cancel-expired") return json(409, { error: "timeout_not_elapsed" });
-        return done(200, { challengeId: challenge(s, "claim-refund", w.id, [pc[1]!]) });
+        const key = decodeURIComponent(pc[1]!).toLowerCase();
+        const p = s.purchases.find((x) => x.key === key);
+        const promo = p && s.promos.find((x) => x.id === p.promotionId);
+        if (!p || !promo) return json(404, { error: "purchase_not_found" });
+        if (body.walletId !== w.id) return json(404, { error: "wallet_not_found" });
+        if (p.customer !== w.address) return json(403, { error: "not_your_purchase" });
+        const state = chainState(p, promo);
+        if (pc[2] === "cancel-expired") {
+          if (state !== "Deposited") {
+            return json(409, { error: "not_cancellable", onChainState: state });
+          }
+          if (nowS() < p.depositedAt + CANCEL_TIMEOUT_SECS) {
+            // The contract would revert (TimeoutNotElapsed); the API leaves that to the chain.
+            return json(409, { error: "not_cancellable", onChainState: state });
+          }
+          return done(200, {
+            challengeId: challenge(s, "cancel-expired", w.id, [key]),
+            purchaseKey: key,
+          });
+        }
+        const ok = state === "Cancelled" || (state === "Hedged" && promo.resolvedOutcome === "YES");
+        if (!ok) return json(409, { error: "nothing_to_claim", onChainState: state });
+        return done(200, {
+          challengeId: challenge(s, "claim-refund", w.id, [key]),
+          purchaseKey: key,
+        });
       }
     }
 
@@ -664,6 +905,7 @@ export function createFixtureTransport(real: Transport): Transport {
         reservedPremium: "0",
         initialized: false,
         resolvedOutcome: null,
+        resolvedAt: null,
       };
       s.promos.push(promo);
       return done(201, {
@@ -712,12 +954,43 @@ export function createFixtureTransport(real: Transport): Transport {
     const list = /^\/api\/promotions\/([^/]+)\/purchases$/.exec(path);
     if (list) {
       const promo = s.promos.find((p) => p.id === decodeURIComponent(list[1]!));
-      if (!promo) return json(404, { error: "promotion_not_found" });
-      return done(200, {
-        purchases: s.purchases
-          .filter((p) => p.promotionId === promo.id)
-          .map((p) => receipt(p, promo)),
-      });
+      if (promo) {
+        return done(200, {
+          promotionId: promo.id,
+          purchases: s.purchases
+            .filter((p) => p.promotionId === promo.id)
+            .sort((a, b) => b.depositedAt - a.depositedAt)
+            .slice(0, 50)
+            .map((p) => summary(p, promo)),
+        });
+      }
+    }
+    if (path === "/api/purchases" && method === "GET") {
+      const customer = (u.searchParams.get("customer") ?? "").toLowerCase();
+      const mine: CustomerPurchaseDto[] = [];
+      for (const p of s.purchases.filter((x) => x.customer === customer)) {
+        const promo = s.promos.find((x) => x.id === p.promotionId);
+        if (!promo) continue;
+        mine.push({
+          ...summary(p, promo),
+          promotion: {
+            id: promo.id,
+            shopName: promo.shopName,
+            itemName: promo.itemName,
+            outcomeLabel: promo.outcomeLabel,
+            resolvedOutcome: promo.resolvedOutcome,
+          },
+        });
+      }
+      let theirs: CustomerPurchaseDto[] = [];
+      try {
+        const r = await real(url, init);
+        if (r.ok) theirs = ((await r.json()) as { purchases: CustomerPurchaseDto[] }).purchases;
+      } catch {
+        // API down: fixture purchases only
+      }
+      const all = [...mine, ...theirs].sort((a, b) => b.depositedAt - a.depositedAt).slice(0, 50);
+      return done(200, { customer, purchases: all });
     }
     const dash = /^\/api\/merchants\/([^/]+)\/dashboard$/.exec(path);
     if (dash) {
@@ -792,12 +1065,19 @@ function liveState(promo: FxPromo, ask: string | null): LiveStateDto {
 function receiptStep(
   status: PurchaseReceiptDto["status"],
   outcome: "YES" | "NO" | null,
+  autoPayout: boolean,
 ): { step: ReceiptStep; canServe: boolean; message: string } {
   const resolved = (
     o: "YES" | "NO" | null,
   ): { step: ReceiptStep; canServe: boolean; message: string } =>
     o === "YES"
-      ? { step: "YOU_WON", canServe: true, message: "It happened! Your money back is ready." }
+      ? {
+          step: "YOU_WON",
+          canServe: true,
+          message: autoPayout
+            ? "It happened! Your money back is on its way."
+            : "It happened! Your money back is ready.",
+        }
       : o === "NO"
         ? { step: "NOT_THIS_TIME", canServe: true, message: "Not this time. Thanks for playing!" }
         : {
@@ -822,7 +1102,11 @@ function receiptStep(
         message: "This promo isn't available right now. Your payment is being returned.",
       };
     case "CANCELLED":
-      return { step: "REFUND_READY", canServe: false, message: "Your refund is ready to claim." };
+      return {
+        step: "REFUND_READY",
+        canServe: false,
+        message: autoPayout ? "Your refund is on its way." : "Your refund is ready to claim.",
+      };
     case "REFUNDED":
       return { step: "REFUNDED", canServe: false, message: "Refunded." };
     case "RESOLVED":

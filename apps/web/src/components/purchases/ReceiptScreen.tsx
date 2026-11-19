@@ -15,14 +15,18 @@ import {
   shortAddr,
   usd,
 } from "@/lib/format";
-import { useNowSeconds, usePoll } from "@/lib/hooks";
+import { store, useNowSeconds, usePoll, useSeenFor } from "@/lib/hooks";
 import {
+  CANCEL_AFTER_SECS,
   ESCROW_STATE_TEXT,
   PURCHASE_KEY,
+  STUCK_AFTER_SECS,
   failureText,
+  myPurchasesKey,
   receiptHeadline,
   receiptStages,
   refundClaimable,
+  type MyPurchase,
   type StageState,
 } from "@/lib/purchases";
 import { useWallet } from "@/lib/wallet/session";
@@ -46,8 +50,10 @@ import { ChainLink, SimTag, Spinner } from "../ui";
 import { NetworkNote } from "../wallet/NetworkNote";
 
 // The live receipt, in Zahin's receipt layout: summary ticket and tracking timeline (left), the
-// refund claim (right). Polls GET /api/purchases/:key (docs/email-wallets.md, checkout step 4).
+// refund panel (right). Polls GET /api/purchases/:key (docs/FRONTEND-API.md "Receipt").
 // A stage is shown as verified only from the on-chain escrow state; hedge figures are simulated.
+// Getting money back follows the receipt's `autoPayout`: true (escrow v2) = sent automatically, no
+// button unless a payout sits for a few minutes; false (escrow v1) = the claim buttons by `step`.
 
 const REFUND_STEPS = new Set(["REFUNDING", "REFUND_READY", "REFUNDED"]);
 
@@ -339,9 +345,11 @@ function Receipt({
     },
     {
       key: "money",
-      title: "Eligible party claims",
-      body: "The customer or the merchant claims the escrowed test USDC",
-      related: "Claimed",
+      title: r.autoPayout ? "Paid out automatically" : "Eligible party claims",
+      body: r.autoPayout
+        ? "The escrow sends the test USDC to the customer or the merchant on its own"
+        : "The customer or the merchant claims the escrowed test USDC",
+      related: r.autoPayout ? "Refunded or claimed" : "Claimed",
       detail:
         r.onChainState === "Refunded" || r.onChainState === "ClaimedByCustomer" ? (
           <span className="flex flex-wrap items-center gap-x-3">
@@ -358,7 +366,11 @@ function Receipt({
           (outcome === "NO" && r.onChainState === "Hedged") ? (
           `The shop keeps the ${price}. Enjoy the ${item.toLowerCase()}.`
         ) : refundClaimable(r) ? (
-          `Your ${price} is ready: claim it in the panel.`
+          r.autoPayout ? (
+            `Your ${price} is on its way to your balance.`
+          ) : (
+            `Your ${price} is ready: claim it in the panel.`
+          )
         ) : (
           `${price} back to you, or the shop keeps it.`
         ),
@@ -423,7 +435,7 @@ function Receipt({
                       className={`${DISPLAY} mt-1 text-[3rem] font-semibold leading-none tracking-[-0.045em] tabular-nums`}
                       title="Show this at the counter"
                     >
-                      {orderNumber(purchaseKey)}
+                      {r.orderCode ? `#${r.orderCode}` : orderNumber(purchaseKey)}
                     </p>
                   </div>
                 </div>
@@ -558,7 +570,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/* ---------- the refund claim ---------- */
+/* ---------- getting the money back ---------- */
 
 function ClaimPanel({
   r,
@@ -572,21 +584,46 @@ function ClaimPanel({
   onClaimed: () => void;
 }) {
   const w = useWallet();
+  const now = useNowSeconds();
   const [tx, setTx] = useState<TransactionState>({ status: "idle" });
   const ready = w.phase === "ready" && Boolean(w.wallet);
   const isBuyer = Boolean(
     ready && w.wallet && w.wallet.address.toLowerCase() === r.customer.toLowerCase(),
   );
+  const auto = r.autoPayout;
   const claimable = refundClaimable(r);
   const paidBack = r.onChainState === "Refunded" || r.onChainState === "ClaimedByCustomer";
   const shopKeeps =
     r.onChainState === "ClaimedByMerchant" ||
     (r.promotion.resolvedOutcome === "NO" && r.onChainState === "Hedged");
 
+  // Escrow v2: the claim is only a fallback once an automatic payout has sat for a few minutes.
+  const seenFor = useSeenFor(claimable ? [`${purchaseKey}:${r.step}`] : []);
+  const stuck = claimable && auto && seenFor(`${purchaseKey}:${r.step}`) >= STUCK_AFTER_SECS;
+  const offerClaim = claimable && (!auto || stuck);
+
+  // A payment still not covered 10 minutes after paying: the customer can cancel it on Arc.
+  const deposited = r.step === "PROCESSING" && r.onChainState === "Deposited";
+  const list = usePoll(
+    deposited && isBuyer ? () => api.customerPurchases(r.customer) : null,
+    30_000,
+    [deposited, isBuyer, r.customer],
+  );
+  const local = deposited
+    ? (store.get<MyPurchase[]>(myPurchasesKey(r.customer)) ?? []).find(
+        (m) => m.purchaseKey.toLowerCase() === purchaseKey.toLowerCase(),
+      )
+    : undefined;
+  const paidAt =
+    list.data?.purchases.find((p) => p.purchasePda.toLowerCase() === purchaseKey.toLowerCase())
+      ?.depositedAt ?? (local ? Math.floor(local.at / 1000) : null);
+  const canCancel =
+    deposited && paidAt !== null && now !== null && now >= paidAt + CANCEL_AFTER_SECS;
+
   const eligibility = paidBack
     ? { pill: PILL_GREEN, text: "Paid back" }
     : claimable
-      ? { pill: PILL_GREEN, text: "Eligible" }
+      ? { pill: PILL_GREEN, text: auto ? "On its way" : "Eligible" }
       : shopKeeps
         ? { pill: PILL_GREY, text: "Not eligible" }
         : { pill: PILL_ORANGE, text: "Not yet" };
@@ -594,19 +631,31 @@ function ClaimPanel({
   const why = paidBack
     ? `Your ${price} is back in your balance.`
     : r.onChainState === "Cancelled"
-      ? `The shop couldn't cover this purchase, so the escrow owes you the full ${price}.`
+      ? auto
+        ? `The shop couldn't cover this purchase, so the escrow is sending your full ${price} back. No action needed.`
+        : `The shop couldn't cover this purchase, so the escrow owes you the full ${price}.`
       : claimable
-        ? `It happened, and the escrow on Arc shows this purchase covered: your ${price} can come back.`
+        ? auto
+          ? `It happened, and the escrow on Arc shows this purchase covered: your ${price} is being sent back automatically.`
+          : `It happened, and the escrow on Arc shows this purchase covered: your ${price} can come back.`
         : shopKeeps
           ? "The official result was no, so the shop keeps this payment."
-          : "Eligibility comes from the escrow on Arc once the official result is in (or right away if the shop can't cover the purchase).";
+          : auto
+            ? "Once the official result is in (or right away if the shop can't cover the purchase), the escrow on Arc pays you automatically if you're owed."
+            : "Eligibility comes from the escrow on Arc once the official result is in (or right away if the shop can't cover the purchase).";
 
-  async function claim() {
+  async function run(kind: "claim" | "cancel") {
     if (!w.wallet) return;
-    const what = `Move your ${price} back to your balance`;
+    const what =
+      kind === "claim"
+        ? `Move your ${price} back to your balance`
+        : `Cancel this payment so your ${price} can come back`;
     setTx({ status: "awaiting_signature", what });
     try {
-      const ch = await api.claimRefund(purchaseKey, w.wallet.id);
+      const ch =
+        kind === "claim"
+          ? await api.claimRefund(purchaseKey, w.wallet.id)
+          : await api.cancelExpired(purchaseKey, w.wallet.id);
       await w.execute(ch.challengeId, what);
       setTx({ status: "confirming" });
       onClaimed();
@@ -619,6 +668,8 @@ function ClaimPanel({
 
   const busy = tx.status === "awaiting_signature";
   const done = paidBack && tx.status !== "idle" ? { status: "confirmed" as const } : null;
+  const action = canCancel ? "cancel" : "claim";
+  const showButton = !auto || offerClaim || canCancel || paidBack;
 
   return (
     <div className={PANEL}>
@@ -626,10 +677,12 @@ function ClaimPanel({
         id="claim-heading"
         className={`${DISPLAY} text-[1.6rem] font-semibold leading-tight tracking-[-0.03em]`}
       >
-        Claim Refund
+        {auto ? "Refund" : "Claim Refund"}
       </h2>
       <p className="mt-2 text-sm leading-relaxed text-[#5A5463]">
-        Eligible customers move their test USDC back with one approval in Circle&apos;s window.
+        {auto
+          ? "Refunds are sent to your email wallet automatically. If one is stuck, you can claim it with one approval."
+          : "Eligible customers move their test USDC back with one approval in Circle's window."}
       </p>
 
       {/* Eligibility */}
@@ -651,7 +704,7 @@ function ClaimPanel({
         <h3 className="text-sm font-semibold">Your email wallet</h3>
         {!ready ? (
           <div className="mt-3">
-            <LoginCard compact cta="Log in to claim" />
+            <LoginCard compact cta={auto ? "Log in" : "Log in to claim"} />
           </div>
         ) : isBuyer ? (
           <p className="mt-2 text-[13px] leading-relaxed text-[#5A5463]">
@@ -667,25 +720,46 @@ function ClaimPanel({
         <NetworkNote />
       </section>
 
-      {/* The claim action */}
+      {/* The action: a claim (v1, or a stuck v2 payout) or a timeout cancel */}
       <section className="mt-6 border-t border-[#E6E1D8] pt-6">
-        <button
-          type="button"
-          disabled={!claimable || !isBuyer || busy || tx.status === "confirming"}
-          onClick={claim}
-          className={BTN_BLOCK}
-        >
-          {busy ? <Spinner /> : null}
-          {paidBack ? "Refund claimed" : `Claim ${price} refund`}
-        </button>
-        <p className="mt-3 text-[13px] leading-relaxed text-[#5A5463]">
+        {showButton ? (
+          <button
+            type="button"
+            disabled={
+              (action === "claim" ? !offerClaim : !canCancel) ||
+              !isBuyer ||
+              busy ||
+              tx.status === "confirming"
+            }
+            onClick={() => run(action)}
+            className={BTN_BLOCK}
+          >
+            {busy ? <Spinner /> : null}
+            {paidBack
+              ? "Refund received"
+              : action === "cancel"
+                ? "Cancel and get refund"
+                : auto
+                  ? `Not arrived? Claim ${price} yourself`
+                  : `Claim ${price} refund`}
+          </button>
+        ) : null}
+        <p className={`${showButton ? "mt-3 " : ""}text-[13px] leading-relaxed text-[#5A5463]`}>
           {paidBack
-            ? "Nothing left to claim for this purchase."
-            : !claimable
-              ? "The button turns on when the escrow shows this purchase as refundable."
-              : !isBuyer
-                ? "Only the wallet that paid can claim."
-                : "One approval in Circle's window moves it back to your balance."}
+            ? "Nothing left to do for this purchase."
+            : canCancel
+              ? "Still not covered 10 minutes after paying, so you can cancel it on Arc. One approval in Circle's window."
+              : claimable && auto && !stuck
+                ? "No action needed: it arrives in your balance on its own, usually within a minute."
+                : !claimable
+                  ? auto
+                    ? "Nothing to do: if you're owed money, it is sent to you automatically."
+                    : "The button turns on when the escrow shows this purchase as refundable."
+                  : !isBuyer
+                    ? "Only the wallet that paid can claim."
+                    : auto
+                      ? "The automatic payout hasn't arrived after a few minutes. One approval in Circle's window moves it to your balance."
+                      : "One approval in Circle's window moves it back to your balance."}
         </p>
         {tx.status !== "idle" ? (
           <TransactionStatus state={done ?? tx} explorerTx={chain().explorerTx} className="mt-4" />

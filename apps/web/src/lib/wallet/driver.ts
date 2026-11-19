@@ -11,8 +11,16 @@ export interface WalletDriver {
   /** Shows the email-code screen; resolves with the session once the code is accepted. */
   verifyEmail(login: EmailLoginDto, email: string): Promise<CircleSession>;
   setAuthentication(session: CircleSession): void;
-  /** Shows the approval screen for a challenge; resolves once approved, rejects otherwise. */
-  execute(challengeId: string, what: string): Promise<void>;
+  /**
+   * Shows the approval screen for a challenge; resolves once approved, rejects otherwise. A
+   * typed-data challenge (one-tap checkout) resolves with the signature.
+   */
+  execute(challengeId: string, what: string): Promise<ChallengeOutcome>;
+}
+
+/** What an approved challenge gave back: a signature for sign challenges, nothing otherwise. */
+export interface ChallengeOutcome {
+  signature?: string;
 }
 
 export interface CircleSession {

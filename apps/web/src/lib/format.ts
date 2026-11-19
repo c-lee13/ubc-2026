@@ -155,6 +155,6 @@ export function seedOf(s: string): number {
 
 /** Short order number a barista can match by eye: "#3AC3" from a purchase key or address. */
 export function orderNumber(purchaseKey: string): string {
-  const s = purchaseKey.startsWith("0x") ? purchaseKey.slice(2) : purchaseKey;
-  return `#${s.slice(0, 4).toUpperCase()}`;
+  // Same as the API's `orderCode` (last 4 characters, upper case), so receipt and counter match.
+  return `#${purchaseKey.slice(-4).toUpperCase()}`;
 }

@@ -9,7 +9,10 @@ import { store } from "./hooks";
 /** A purchase key: bytes32 hex from the Arc escrow (purchaseKeyOf(promo, customer, id)). */
 export const PURCHASE_KEY = /^0x[0-9a-fA-F]{64}$/;
 
-/** Purchases made in this browser, per wallet (until the API can list a customer's purchases). */
+/**
+ * Purchases made in this browser, per wallet. The main list is the server's
+ * (GET /api/purchases?customer=); this only covers the moments before it sees a new payment.
+ */
 export const myPurchasesKey = (wallet: string) => `hedged:purchases:${wallet.toLowerCase()}`;
 export interface MyPurchase {
   purchaseKey: string;
@@ -21,6 +24,15 @@ export function rememberPurchase(wallet: string, p: MyPurchase) {
   const all = store.get<MyPurchase[]>(myPurchasesKey(wallet)) ?? [];
   store.set(myPurchasesKey(wallet), [...all.filter((x) => x.purchaseKey !== p.purchaseKey), p]);
 }
+
+/**
+ * Escrow v2 pays out automatically. Only when a payout has not arrived this long after this browser
+ * first saw it due (REFUND_READY / YOU_WON, or a NO result for the shop) is the manual claim offered.
+ */
+export const STUCK_AFTER_SECS = 180;
+
+/** The contract lets a customer cancel a still-uncovered payment this long after paying (Arc demo config). */
+export const CANCEL_AFTER_SECS = 600;
 
 /** Escrow states where the purchase's money is still inside the escrow. */
 export const HELD = new Set(["Deposited", "Hedged", "Cancelled"]);

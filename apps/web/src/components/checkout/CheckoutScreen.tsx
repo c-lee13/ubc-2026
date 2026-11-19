@@ -12,6 +12,7 @@ import {
 import { api, chain } from "@/lib/client";
 import { publicConfig } from "@/lib/config";
 import { describe, type Problem } from "@/lib/errors";
+import { WalletUserError } from "@/lib/wallet/driver";
 import {
   cents,
   chance,
@@ -46,9 +47,11 @@ import { Button, Notice, Spinner } from "../ui";
 import { NetworkNote } from "../wallet/NetworkNote";
 
 // Customer checkout, Zahin's layout: the offer ticket (left) and the checkout panel (right).
-// Data: GET /api/promotions/:id (polled). Paying follows docs/email-wallets.md: status ->
-// (first time) approve challenge -> deposit challenge, each approved by the customer in Circle's
-// window; then the receipt at /purchases/<purchaseKey>.
+// Data: GET /api/promotions/:id (polled). Paying follows docs/FRONTEND-API.md "Checkout":
+//   status -> checkout "one-tap" (escrow v2): POST /sign -> Circle signature -> POST /submit
+//             (our relayer sends it on Arc and pays the gas), or
+//             checkout "approve-deposit" (escrow v1 fallback): /approve (first time) -> /deposit,
+// each approved by the customer in Circle's window; then the receipt at /purchases/<purchaseKey>.
 
 const DETAIL_LABELS = [
   "Item",
@@ -229,7 +232,7 @@ export function CheckoutScreen({ promoId }: { promoId: string }) {
                   <div className="min-w-0 flex-1 gap-x-6 sm:flex sm:justify-between">
                     <dt className="font-semibold">If the outcome happens</dt>
                     <dd className="mt-0.5 text-[#211D28] sm:mt-0 sm:text-right">
-                      You claim your {price} back.
+                      You get your {price} back.
                     </dd>
                   </div>
                 </div>
@@ -238,7 +241,7 @@ export function CheckoutScreen({ promoId }: { promoId: string }) {
                   <div className="min-w-0 flex-1 gap-x-6 sm:flex sm:justify-between">
                     <dt className="font-semibold">If it doesn&apos;t</dt>
                     <dd className="mt-0.5 text-[#211D28] sm:mt-0 sm:text-right">
-                      The merchant claims the escrowed {price}.
+                      The merchant keeps the escrowed {price}.
                     </dd>
                   </div>
                 </div>
@@ -451,59 +454,43 @@ function CheckoutPanel({
 
   async function pay() {
     if (!walletId || !w.wallet) return;
+    const address = w.wallet.address;
     setBusy(true);
     setProblem(null);
     setTx({ status: "idle" });
     try {
       // Re-check right before asking for any approval: a paused promo takes no money.
-      let st = await api.checkoutStatus(promo.id, walletId);
+      const st = await api.checkoutStatus(promo.id, walletId);
       if (!st.canBuy) throw new ApiError(409, "promo_not_buyable", { pauseReason: st.pauseReason });
       if (!st.enoughBalance) throw new ApiError(409, "insufficient_usdc", {});
-      // First purchase only: allow the escrow to take payments (up to $100).
-      if (st.needsApproval) {
-        const what = "One-time approval: let the escrow take your payments (up to $100)";
-        setTx({ status: "awaiting_signature", what });
-        try {
-          const ch = await api.checkoutApprove(promo.id, walletId);
-          await w.execute(ch.challengeId, what);
-        } catch (err) {
-          if (!(err instanceof ApiError && err.code === "already_approved")) throw err;
-        }
-        setTx({ status: "confirming" });
-        const end = Date.now() + 60_000;
-        while (st.needsApproval && Date.now() < end) {
-          await new Promise((r) => setTimeout(r, 2000));
-          st = await api.checkoutStatus(promo.id, walletId);
-        }
-        if (st.needsApproval) throw new ApiError(409, "approval_needed", {});
-      }
-      // The payment itself.
       const what = `Pay ${price} to ${promo.shop.name} for a ${promo.itemName.toLowerCase()}`;
-      setTx({ status: "awaiting_signature", what });
-      const dep = await api.checkoutDeposit(promo.id, walletId);
-      await w.execute(dep.challengeId, what);
-      rememberPurchase(w.wallet.address, {
-        purchaseKey: dep.purchaseKey,
+      const paid =
+        st.checkout === "one-tap"
+          ? await payOneTap(walletId, what)
+          : await payApproveDeposit(walletId, what, st.needsApproval);
+      rememberPurchase(address, {
+        purchaseKey: paid.purchaseKey,
         promotionId: promo.id,
         at: Date.now(),
       });
       void w.refreshWallet();
       // Wait briefly for the promo server to record it, then open the live receipt (which keeps
       // polling if Arc or the server is slower than this).
-      setTx({ status: "confirming" });
+      const realHash = publicConfig.walletFixture ? null : paid.txHash;
+      setTx({ status: "confirming", txHash: realHash ?? undefined });
       const until = Date.now() + 15_000;
       while (Date.now() < until) {
         try {
-          const r = await api.purchase(dep.purchaseKey);
+          const r = await api.purchase(paid.purchaseKey);
           // Fixture hashes are made up, so they are never shown as Arc transactions.
-          const hash = publicConfig.walletFixture ? null : r.transactions.deposit;
+          const hash = publicConfig.walletFixture ? null : (r.transactions.deposit ?? realHash);
           setTx({ status: "confirmed", txHash: hash ?? undefined });
           break;
         } catch {
           await new Promise((res) => setTimeout(res, 1500));
         }
       }
-      router.push(`/purchases/${dep.purchaseKey}`);
+      router.push(`/purchases/${paid.purchaseKey}`);
     } catch (err) {
       const pr = describe(err);
       setTx({ status: "failed", message: `${pr.title}. ${pr.detail}` });
@@ -511,6 +498,74 @@ function CheckoutPanel({
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Escrow v2: ONE approval. The customer signs a payment authorization for exactly this price
+   * (valid 5 minutes, only for this promo, customer and purchase); our relayer sends it on Arc and
+   * pays the gas. Submit returns once the payment has landed.
+   */
+  async function payOneTap(
+    walletId: string,
+    what: string,
+  ): Promise<{ purchaseKey: string; txHash: string | null }> {
+    setTx({ status: "awaiting_signature", what });
+    const sig = await api.checkoutSign(promo.id, walletId);
+    const { signature } = await w.execute(sig.challengeId, what);
+    if (!signature) {
+      throw new WalletUserError(
+        "No signature from Circle",
+        "The approval finished without a signature, so nothing was charged. Pay again.",
+      );
+    }
+    setTx({ status: "submitted" });
+    const body = {
+      walletId,
+      purchaseIdHex: sig.purchaseIdHex,
+      validBefore: sig.validBefore,
+      signature,
+    };
+    // 503 relayer_unavailable: retry with the same body (the signature is reusable until it lands).
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const sub = await api.checkoutSubmit(promo.id, sig.submit, body);
+        return { purchaseKey: sub.purchaseKey, txHash: sub.txHash };
+      } catch (err) {
+        const retry = err instanceof ApiError && err.code === "relayer_unavailable" && attempt < 3;
+        if (!retry || Date.now() / 1000 >= sig.validBefore - 5) throw err;
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+    }
+  }
+
+  /** Escrow v1 fallback: approve once (first purchase, up to $100), then the deposit itself. */
+  async function payApproveDeposit(
+    walletId: string,
+    what: string,
+    needsApproval: boolean,
+  ): Promise<{ purchaseKey: string; txHash: string | null }> {
+    if (needsApproval) {
+      const approval = "One-time approval: let the escrow take your payments (up to $100)";
+      setTx({ status: "awaiting_signature", what: approval });
+      try {
+        const ch = await api.checkoutApprove(promo.id, walletId);
+        await w.execute(ch.challengeId, approval);
+      } catch (err) {
+        if (!(err instanceof ApiError && err.code === "already_approved")) throw err;
+      }
+      setTx({ status: "confirming" });
+      let pending = true;
+      const end = Date.now() + 60_000;
+      while (pending && Date.now() < end) {
+        await new Promise((r) => setTimeout(r, 2000));
+        pending = (await api.checkoutStatus(promo.id, walletId)).needsApproval;
+      }
+      if (pending) throw new ApiError(409, "approval_needed", {});
+    }
+    setTx({ status: "awaiting_signature", what });
+    const dep = await api.checkoutDeposit(promo.id, walletId);
+    await w.execute(dep.challengeId, what);
+    return { purchaseKey: dep.purchaseKey, txHash: null };
   }
 
   const disabled = Boolean(blocker || short || !s || !ready || busy);
@@ -596,7 +651,7 @@ function CheckoutPanel({
             disabled={disabled}
             className={BTN_BLOCK}
             title={
-              s?.needsApproval
+              s?.checkout === "approve-deposit" && s.needsApproval
                 ? "First payment: approve once to allow payments, then approve the payment."
                 : undefined
             }
@@ -625,9 +680,11 @@ function CheckoutPanel({
             ? blocker.detail
             : !ready
               ? "Log in above. Nothing is charged until you approve the payment in Circle's window."
-              : s?.needsApproval
-                ? "Your first purchase asks for two approvals in Circle's window: one to let the escrow take payments (up to $100), then the payment itself."
-                : "You approve the payment in Circle's window. Then your live receipt opens."}
+              : s?.checkout === "one-tap"
+                ? `One approval in Circle's window for exactly ${price}. The promo server sends it on Arc and pays the network fee. Then your live receipt opens.`
+                : s?.needsApproval
+                  ? "Your first purchase asks for two approvals in Circle's window: one to let the escrow take payments (up to $100), then the payment itself."
+                  : "You approve the payment in Circle's window. Then your live receipt opens."}
         </p>
 
         {tx.status !== "idle" ? (

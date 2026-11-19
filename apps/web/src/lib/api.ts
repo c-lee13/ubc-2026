@@ -11,9 +11,10 @@ import type {
 } from "@hedged/shared";
 
 /**
- * Typed client for Dev 4's REST API (apps/api). Response shapes mirror apps/api/src/routes/* and
- * apps/api/src/circle/routes.ts on branch `arc`; they are not in @hedged/shared yet (a gap for
- * Dev 4). Plain fetch through a swappable transport: the dev-only wallet fixture plugs in there.
+ * Typed client for Dev 4's REST API (apps/api), per docs/FRONTEND-API.md (the one guide for the
+ * frontend). Response shapes mirror apps/api/src/routes/* and apps/api/src/circle/routes.ts on
+ * branch `arc`; they are not in @hedged/shared yet. Plain fetch through a swappable transport: the
+ * dev-only wallet fixture plugs in there.
  */
 
 export type LivePhase = "LIVE" | "PAUSED" | "WAITING_FOR_RESULT" | "RESULT_YES" | "RESULT_NO";
@@ -83,6 +84,8 @@ export type ReceiptStep =
 
 export interface PurchaseReceiptDto {
   purchasePda: string;
+  /** 4 characters, also on the counter feed, so staff can match the two. */
+  orderCode: string;
   customer: string;
   amount: string;
   status: PurchaseStatus;
@@ -90,6 +93,8 @@ export interface PurchaseReceiptDto {
   step: ReceiptStep;
   canServe: boolean;
   message: string;
+  /** true (escrow v2): refunds and payouts are sent automatically, so show no claim button. */
+  autoPayout: boolean;
   promotion: {
     id: string;
     shopName: string;
@@ -115,6 +120,35 @@ export interface PurchaseReceiptDto {
     markHedged: string | null;
     cancel: string | null;
     claim: string | null;
+  };
+}
+
+/** One row of a purchase list (counter feed, a customer's purchases): no hedge detail. */
+export interface PurchaseSummaryDto {
+  purchasePda: string;
+  orderCode: string;
+  customer: string;
+  amount: string;
+  /** Unix seconds (on-chain deposit time). */
+  depositedAt: number;
+  status: PurchaseStatus;
+  onChainState: OnChainPurchaseState;
+  step: ReceiptStep;
+  canServe: boolean;
+  message: string;
+  autoPayout: boolean;
+  /** Path of the full receipt (GET /api/purchases/:purchaseKey). */
+  receipt: string;
+}
+
+/** GET /api/purchases?customer=: a summary plus which promo it was. */
+export interface CustomerPurchaseDto extends PurchaseSummaryDto {
+  promotion: {
+    id: string;
+    shopName: string;
+    itemName: string;
+    outcomeLabel: string;
+    resolvedOutcome: "YES" | "NO" | null;
   };
 }
 
@@ -200,6 +234,12 @@ export interface CheckoutStatusDto {
   pauseReason: PauseReason | null;
   usdcBalance: string;
   enoughBalance: boolean;
+  /**
+   * Which flow to run. "one-tap" (escrow v2 + our relayer): /sign, Circle signature, /submit.
+   * "approve-deposit" (escrow v1, the fallback): /approve if needsApproval, then /deposit.
+   */
+  checkout: "one-tap" | "approve-deposit";
+  /** Only ever true on "approve-deposit". */
   needsApproval: boolean;
 }
 
@@ -207,6 +247,7 @@ export interface ChallengeDto {
   challengeId: string;
 }
 
+/** v1 fallback: the deposit challenge. */
 export interface DepositChallengeDto extends ChallengeDto {
   step: "deposit";
   purchaseIdHex: string;
@@ -214,13 +255,37 @@ export interface DepositChallengeDto extends ChallengeDto {
   receipt: string;
 }
 
-/**
- * PROPOSED merchant/claim routes (not in apps/api yet; listed for Dev 4). The UI calls them and
- * explains clearly when the server answers 404. The dev fixture implements them.
- */
+/** v2 one-tap, step 1: a typed-data signature challenge for exactly the promo price. */
+export interface SignChallengeDto extends ChallengeDto {
+  step: "sign";
+  purchaseIdHex: string;
+  purchaseKey: string;
+  /** Unix seconds; the signature is valid until then (5 minutes, capped at the deadline). */
+  validBefore: number;
+  /** Path to POST the signature to (= /api/checkout/:promoId/submit). */
+  submit: string;
+}
+
+/** v2 one-tap, step 2: our relayer sent the payment on Arc and it landed. */
+export interface SubmitDto {
+  step: "submitted";
+  purchaseKey: string;
+  receipt: string;
+  txHash: string | null;
+  alreadyApplied?: boolean;
+}
+
+/** POST /api/promotions/:id/initialize: the shop approves creating its draft on Arc. */
 export interface InitializePromoChallengeDto extends ChallengeDto {
   /** bytes32 promo id = promoIdOf(merchant, promoNonce); pass to POST /confirm. */
-  promoId: string;
+  promoPda: string;
+  /** Path of the confirm call. */
+  confirm: string;
+}
+
+/** Customer refund claim or timeout cancel. */
+export interface PurchaseChallengeDto extends ChallengeDto {
+  purchaseKey: string;
 }
 
 /** One priced line of a game (GET /api/events/:ticker/lines); costs are a simulated hedge. */
@@ -368,27 +433,53 @@ export function createApi(
         ...post({ walletId }),
         auth: true,
       }),
+    // v2 one-tap: sign once (Circle), then our relayer submits and pays the gas.
+    checkoutSign: (promotionId: string, walletId: string) =>
+      request<SignChallengeDto>(`/api/checkout/${id(promotionId)}/sign`, {
+        ...post({ walletId }),
+        auth: true,
+      }),
+    checkoutSubmit: (
+      promotionId: string,
+      submitPath: string | undefined,
+      body: { walletId: string; purchaseIdHex: string; validBefore: number; signature: string },
+    ) =>
+      request<SubmitDto>(
+        // The server names the path; only a checkout path on this same server is accepted.
+        submitPath && /^\/api\/checkout\/[^/?#]+\/submit$/.test(submitPath)
+          ? submitPath
+          : `/api/checkout/${id(promotionId)}/submit`,
+        { ...post(body), auth: true },
+      ),
 
-    // PROPOSED (gaps for Dev 4): Circle-signed merchant and claim actions, purchase lists.
+    // Shop: publish a draft from the email wallet; counter feed; collect after NO (fallback).
     initializePromo: (promotionId: string, walletId: string) =>
       request<InitializePromoChallengeDto>(`/api/promotions/${id(promotionId)}/initialize`, {
         ...post({ walletId }),
         auth: true,
       }),
     promotionPurchases: (promotionId: string) =>
-      request<{ purchases: PurchaseReceiptDto[] }>(`/api/promotions/${id(promotionId)}/purchases`),
+      request<{ promotionId: string; purchases: PurchaseSummaryDto[] }>(
+        `/api/promotions/${id(promotionId)}/purchases`,
+      ),
+    claimMerchant: (purchaseKeys: string[], walletId: string) =>
+      request<{ challenges: { purchaseKey: string; challengeId: string }[] }>(
+        `/api/purchases/claim-merchant`,
+        { ...post({ walletId, purchaseKeys }), auth: true },
+      ),
+
+    // Customer: own purchases; refund claim and timeout cancel (fallbacks on escrow v2).
+    customerPurchases: (customer: string) =>
+      request<{ customer: string; purchases: CustomerPurchaseDto[] }>(
+        `/api/purchases${q({ customer })}`,
+      ),
     claimRefund: (purchaseKey: string, walletId: string) =>
-      request<ChallengeDto>(`/api/purchases/${id(purchaseKey)}/claim-refund`, {
+      request<PurchaseChallengeDto>(`/api/purchases/${id(purchaseKey)}/claim-refund`, {
         ...post({ walletId }),
         auth: true,
       }),
-    claimMerchant: (purchaseKeys: string[], walletId: string) =>
-      request<ChallengeDto>(`/api/purchases/claim-merchant`, {
-        ...post({ walletId, purchaseKeys }),
-        auth: true,
-      }),
     cancelExpired: (purchaseKey: string, walletId: string) =>
-      request<ChallengeDto>(`/api/purchases/${id(purchaseKey)}/cancel-expired`, {
+      request<PurchaseChallengeDto>(`/api/purchases/${id(purchaseKey)}/cancel-expired`, {
         ...post({ walletId }),
         auth: true,
       }),
@@ -396,23 +487,6 @@ export function createApi(
 }
 
 export type Api = ReturnType<typeof createApi>;
-
-/** Routes the UI needs that apps/api does not have yet: a 404 on these means "not built yet". */
-export const PROPOSED_ROUTES = [
-  "/initialize",
-  "/purchases/claim-merchant",
-  "/claim-refund",
-  "/cancel-expired",
-] as const;
-
-export function isMissingRoute(err: unknown): boolean {
-  return (
-    err instanceof ApiError &&
-    err.status === 404 &&
-    (err.code === "Not Found" || /not found/i.test(String(err.body.message ?? ""))) &&
-    PROPOSED_ROUTES.some((r) => err.path.includes(r))
-  );
-}
 
 const PAUSE_TEXT: Record<PauseReason, string> = {
   PRICE_ABOVE_THRESHOLD: "the market price is above what this shop pays to cover a refund",
@@ -478,8 +552,8 @@ export function describeApiError(err: unknown): { title: string; detail: string 
         };
       case "promo_not_found_on_chain_yet":
         return {
-          title: "Not finalized yet",
-          detail: "Devnet hasn't finalized the promo yet. It usually takes under 30 seconds.",
+          title: "Not confirmed yet",
+          detail: "Arc hasn't confirmed the promo yet. It usually takes a few seconds.",
         };
       case "on_chain_promo_does_not_match":
         return {
@@ -488,9 +562,9 @@ export function describeApiError(err: unknown): { title: string; detail: string 
         };
       case "solana_gateway_unavailable":
         return {
-          title: "Backend not on Devnet",
+          title: "Promo server not on chain",
           detail:
-            "The promo server is running without a Solana connection, so it can't verify promos.",
+            "The promo server is running without a chain connection (SOLANA_GATEWAY), so it can't verify promos.",
         };
       case "promotion_not_found":
         return { title: "Promo not found", detail: "There is no promo at this link." };
@@ -498,7 +572,7 @@ export function describeApiError(err: unknown): { title: string; detail: string 
         return {
           title: "Receipt not ready",
           detail:
-            "The promo server hasn't seen this purchase yet. It appears once Devnet finalizes it.",
+            "The promo server hasn't seen this purchase yet. It appears once Arc confirms it.",
         };
       case "merchant_not_found":
         return { title: "No promos yet", detail: "This wallet hasn't created a promo." };
@@ -563,6 +637,74 @@ export function describeApiError(err: unknown): { title: string; detail: string 
           detail: `Circle answered: ${msg}. Try again in a moment.`,
         };
       }
+      // One-tap checkout (escrow v2).
+      case "signature_expired":
+        return {
+          title: "Approval expired",
+          detail:
+            "The payment approval is only valid for 5 minutes. Nothing was charged. Pay again.",
+        };
+      case "deposit_rejected":
+        return {
+          title: "Payment refused on Arc",
+          detail: "Arc didn't accept the signed payment, so nothing was taken. Try again.",
+        };
+      case "relayer_unavailable":
+        return {
+          title: "Payment not sent yet",
+          detail:
+            "The promo server couldn't reach Arc to send your payment. Nothing was taken; try again in a moment.",
+        };
+      case "one_tap_unavailable":
+        return {
+          title: "One-tap checkout is off",
+          detail: "This server uses the two-step checkout. Reload the page and pay again.",
+        };
+      case "invalid_signature":
+        return { title: "No signature", detail: "Circle didn't return a signature. Pay again." };
+      // Shop publish and collect.
+      case "not_this_shops_wallet":
+        return {
+          title: "Wrong shop wallet",
+          detail: "This promo belongs to another shop's email wallet. Log in with that email.",
+        };
+      case "already_published":
+        return { title: "Already published", detail: "This promo is already live." };
+      case "deadline_passed":
+        return {
+          title: "Deadline passed",
+          detail: "Sales would already be closed, so this draft can't be published.",
+        };
+      case "not_this_shops_purchase":
+        return {
+          title: "Not your sale",
+          detail: "One of these purchases belongs to another shop.",
+        };
+      case "nothing_to_collect":
+        return {
+          title: "Nothing to collect",
+          detail: 'Not resolved "no" yet, or already paid to the shop.',
+        };
+      case "invalid_purchase_keys":
+        return { title: "Nothing selected", detail: "Pick 1 to 20 purchases to collect." };
+      // Customer refund claim and timeout cancel.
+      case "not_your_purchase":
+        return {
+          title: "Not your purchase",
+          detail: "Only the email wallet that paid can do this. Log in with that email.",
+        };
+      case "nothing_to_claim":
+        return {
+          title: "Nothing to claim",
+          detail: "This purchase isn't refundable right now, or the money is already back.",
+        };
+      case "not_cancellable":
+        return {
+          title: "Can't cancel",
+          detail: "Only a payment that is still waiting to be covered can be cancelled.",
+        };
+      case "invalid_customer":
+        return { title: "Wallet address not valid", detail: "Log out and log in again." };
       case "invalid_email":
         return { title: "Check the email", detail: "That email address doesn't look right." };
       case "invalid_device_id":
@@ -571,12 +713,6 @@ export function describeApiError(err: unknown): { title: string; detail: string 
           detail: "Circle couldn't identify this browser. Reload the page and try again.",
         };
       default:
-        if (isMissingRoute(err)) {
-          return {
-            title: "Not on this server yet",
-            detail: `The promo server doesn't have ${err.path.replace(/\?.*$/, "")} yet, so this step can't run from an email wallet.`,
-          };
-        }
         return {
           title: "Request failed",
           detail: `The promo server answered ${err.status} (${err.code}).`,

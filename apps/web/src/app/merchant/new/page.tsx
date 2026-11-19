@@ -51,7 +51,7 @@ import { NetworkNote } from "@/components/wallet/NetworkNote";
 //   1. deadline check against the exact Gemini market   GET  /api/markets/:id/deadline-check
 //   2. draft with the exact on-chain arguments          POST /api/promotions
 //   3. the shop approves creating it on Arc             POST /api/promotions/:id/initialize
-//      (PROPOSED route, not in apps/api yet) + Circle's approval window
+//      + Circle's approval window (returns the promo's on-chain id, promoPda)
 //   4. the server reads it back from Arc, turns it on   POST /api/promotions/:id/confirm
 // Inputs stay plain strings; amounts convert to 6-decimal USDC base units with BigInt (no floats).
 // The backend has no promotion name or description: the shop name and the item take their place.
@@ -394,14 +394,14 @@ export default function NewPromotionPage() {
         ch.challengeId,
         `Create the promo: ${form.itemName.trim()}, ${usdExact(offerBase)} with money back`,
       );
-      saveDraft(shop.address, { ...local, promoId: ch.promoId });
+      saveDraft(shop.address, { ...local, promoId: ch.promoPda });
       mark("sign", "done");
-      setPublished({ promotionId: created.promotion.id, promoPda: ch.promoId });
+      setPublished({ promotionId: created.promotion.id, promoPda: ch.promoPda });
 
       // 4. The backend reads the promo from Arc and activates it if every field matches.
       step = "verify";
       mark("verify", "doing");
-      await confirmWithRetry(created.promotion.id, ch.promoId);
+      await confirmWithRetry(created.promotion.id, ch.promoPda);
       mark("verify", "done");
       removeDraft(shop.address, created.promotion.id);
     } catch (err) {

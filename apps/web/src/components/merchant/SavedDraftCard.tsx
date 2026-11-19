@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { PromotionDto } from "@/lib/api";
+import { ApiError, type PromotionDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { describe, type Problem } from "@/lib/errors";
 import { conditionText, dateTime, usdExact } from "@/lib/format";
@@ -12,8 +12,9 @@ import { DISPLAY, PILL_PURPLE } from "../layout/styles";
 import { Button, Notice } from "../ui";
 
 // A promotion saved as a DRAFT on the promo server but not created on Arc yet, in Zahin's
-// saved-draft card. If this browser started publishing it (LocalDraft), the shop can finish here:
-// approve creating it in Circle's window, then the server confirms it on Arc and turns it on.
+// saved-draft card. The shop's wallet can finish it from any browser: approve creating it in
+// Circle's window (POST /api/promotions/:id/initialize), then the server confirms it on Arc and
+// turns it on. LocalDraft only remembers that this browser already approved it.
 
 export function SavedDraftCard({
   merchant,
@@ -35,19 +36,42 @@ export function SavedDraftCard({
   const expired = now !== null && draft.depositDeadline <= now + 90;
 
   async function finish() {
-    if (!w.wallet || !local) return;
+    if (!w.wallet) return;
     setBusy(true);
     setProblem(null);
     try {
-      let promoId = local.promoId;
+      let promoId = local?.promoId;
       if (!promoId) {
         const ch = await api.initializePromo(draft.id, w.wallet.id);
+        promoId = ch.promoPda;
+        // Approved in another browser already? Then it is on Arc and only needs confirming.
+        const onChain = await api.confirmPromotion(draft.id, promoId).then(
+          () => true,
+          (err) => {
+            if (err instanceof ApiError && err.code === "promo_not_found_on_chain_yet")
+              return false;
+            throw err;
+          },
+        );
+        if (onChain) {
+          removeDraft(merchant, draft.id);
+          onChange();
+          return;
+        }
         await w.execute(
           ch.challengeId,
           `Create the promo: ${draft.itemName}, ${usdExact(draft.offerAmount)} with money back`,
         );
-        promoId = ch.promoId;
-        saveDraft(merchant, { ...local, promoId });
+        saveDraft(merchant, {
+          promotionId: draft.id,
+          init: local?.init ?? {
+            promoNonce: "",
+            offerAmount: draft.offerAmount,
+            depositDeadline: draft.depositDeadline,
+            marketId: draft.geminiMarketId,
+          },
+          promoId,
+        });
       }
       await confirmWithRetry(draft.id, promoId);
       removeDraft(merchant, draft.id);
@@ -114,14 +138,14 @@ export function SavedDraftCard({
         <ul className="mt-1.5 list-disc space-y-1 pl-5">
           <li>It is saved on the promo server but not created on Arc.</li>
           <li>It cannot take payments until you approve it and the server confirms it on Arc.</li>
-          {local ? null : <li>Publishing was started in another browser, so finish it there.</li>}
+          {canAct ? null : <li>Log in as this shop to publish it.</li>}
         </ul>
       </div>
 
-      {local && canAct && !expired ? (
+      {canAct && !expired ? (
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <Button size="md" busy={busy} onClick={finish}>
-            {local.promoId ? "Finish publishing" : "Approve and publish"}
+            {local?.promoId ? "Finish publishing" : "Approve and publish"}
           </Button>
         </div>
       ) : null}
