@@ -50,6 +50,7 @@ const PROMO_COLS = [
   "outcome_label",
   "max_yes_price_micro_usd::text",
   "hedge_budget::text",
+  "coupon_total",
   "reserved_premium::text",
   "resolved_outcome",
   "resolve_tx_signature",
@@ -174,6 +175,7 @@ export class SupabaseStore implements Store {
         outcome_label: p.outcomeLabel,
         max_yes_price_micro_usd: p.maxYesPriceMicroUsd.toString(),
         hedge_budget: p.hedgeBudget.toString(),
+        coupon_total: p.couponTotal ?? null,
       })
       .select(PROMO_COLS)
       .single();
@@ -582,6 +584,8 @@ function toPromotion(r: Row): PromotionRow {
     outcomeLabel: String(r.outcome_label),
     maxYesPriceMicroUsd: big(r.max_yes_price_micro_usd),
     hedgeBudget: big(r.hedge_budget),
+    couponTotal:
+      r.coupon_total === null || r.coupon_total === undefined ? null : Number(r.coupon_total),
     reservedPremium: big(r.reserved_premium),
     resolvedOutcome: (r.resolved_outcome as PromotionRow["resolvedOutcome"]) ?? null,
     resolveTxSignature: str(r.resolve_tx_signature),

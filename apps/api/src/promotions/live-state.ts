@@ -7,8 +7,8 @@ import { BASE_UNITS_PER_HUNDREDTH, hundredthsToQty, qtyToHundredths } from "../g
  *
  * Phases:
  *   LIVE                selling: before the deadline, live price within the shop's threshold
- *   PAUSED              before the deadline but not selling (price above threshold, budget used,
- *                       or no live price); checkout should not take payment
+ *   PAUSED              before the deadline but not selling (coupons sold out, price above
+ *                       threshold, budget used, or no live price); checkout should not take payment
  *   WAITING_FOR_RESULT  deadline passed; waiting for Gemini's official result
  *   RESULT_YES / RESULT_NO  resolved on-chain
  */
@@ -18,7 +18,17 @@ export type PauseReason =
   /** Within the safety buffer under the threshold: a small move would fail the hedge after payment. */
   | "PRICE_NEAR_THRESHOLD"
   | "BUDGET_USED"
+  /** Every coupon the shop offered is sold (promotion.couponTotal). */
+  | "SOLD_OUT"
   | "NO_LIVE_PRICE";
+
+/** Purchases that gave a coupon back (refunded or cancelled) don't count as sold. */
+const NOT_SOLD = new Set(["CANCELLED", "REFUNDED", "CANCEL_PENDING", "HEDGE_FAILED"]);
+
+/** Coupons sold for one promo: its purchases, minus the ones refunded or cancelled. */
+export function soldCoupons(purchases: Pick<PurchaseRow, "status">[]): number {
+  return purchases.filter((p) => !NOT_SOLD.has(p.status)).length;
+}
 
 /**
  * Checkout only opens when the live price is a little UNDER the shop's threshold, so a price tick
@@ -48,6 +58,8 @@ export function liveState(
   promo: PromotionRow,
   liveAskMicroUsd: bigint | null,
   nowUnix: number,
+  /** Coupons sold so far (soldCoupons); only checked when the promo has a couponTotal. */
+  sold = 0,
 ): LiveState {
   const thresholdBps = Number((promo.maxYesPriceMicroUsd * 10_000n) / 1_000_000n);
   const budgetRemaining = promo.hedgeBudget - promo.reservedPremium;
@@ -75,6 +87,7 @@ export function liveState(
     pauseReason,
     canBuy: false,
   });
+  if (promo.couponTotal !== null && sold >= promo.couponTotal) return pause("SOLD_OUT");
   if (liveAskMicroUsd === null || costPerSale === null) return pause("NO_LIVE_PRICE");
   if (liveAskMicroUsd > promo.maxYesPriceMicroUsd) return pause("PRICE_ABOVE_THRESHOLD");
   if (liveAskMicroUsd > promo.maxYesPriceMicroUsd - buyBuffer(promo.maxYesPriceMicroUsd)) {
@@ -118,7 +131,7 @@ export function promoStats(purchases: PurchaseRow[], hedges: HedgeRow[]): PromoS
       contractsH += qtyToHundredths(h.filledContracts);
       premium += h.premium ?? 0n;
     }
-    if (["CANCELLED", "REFUNDED", "CANCEL_PENDING", "HEDGE_FAILED"].includes(p.status)) refunded++;
+    if (NOT_SOLD.has(p.status)) refunded++;
   }
   const payoutIfYes = contractsH * BASE_UNITS_PER_HUNDREDTH;
   return {

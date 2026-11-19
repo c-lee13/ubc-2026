@@ -8,7 +8,7 @@ import { buildServer } from "../server";
 import { MemoryStore } from "../store/memory-store";
 import type { PromotionRow } from "../store/types";
 import { priceLines } from "./line-picker";
-import { liveState } from "./live-state";
+import { liveState, soldCoupons } from "./live-state";
 
 const MERCHANT = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
 const PROMO_PDA = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
@@ -33,6 +33,7 @@ const promoRow = (p: Partial<PromotionRow> = {}): PromotionRow => ({
   outcomeLabel: "Texas wins",
   maxYesPriceMicroUsd: 500_000n,
   hedgeBudget: 100_000_000n,
+  couponTotal: null,
   reservedPremium: 0n,
   resolvedOutcome: null,
   resolveTxSignature: null,
@@ -278,5 +279,113 @@ test("fix: a draft naming someone else's wallet cannot change their public shop 
     ["Bean There"],
   );
   assert.equal((await store.getMerchant(MERCHANT))?.shopName, "Bean There");
+  await app.close();
+});
+
+test("coupons: live state pauses SOLD_OUT once every coupon is sold; refunds give one back", () => {
+  const capped = promoRow({ couponTotal: 2 });
+  assert.equal(liveState(capped, 400_000n, nowUnix, 1).phase, "LIVE");
+  const out = liveState(capped, 400_000n, nowUnix, 2);
+  assert.equal(out.phase, "PAUSED");
+  assert.equal(out.pauseReason, "SOLD_OUT");
+  assert.equal(out.canBuy, false);
+  // No limit: the sold count is ignored.
+  assert.equal(liveState(promoRow(), 400_000n, nowUnix, 999).phase, "LIVE");
+  assert.equal(
+    soldCoupons([{ status: "HEDGED" }, { status: "REFUNDED" }, { status: "DEPOSITED" }]),
+    2,
+  );
+});
+
+test("API: coupon total is stored, shown as { total, sold } to everyone, and stops sales", async () => {
+  const store = new MemoryStore();
+  const gateway = new FakeSolanaGateway(() => Math.floor(Date.now() / 1000));
+  const app = await buildServer(loadConfig({}), { gemini: stubGemini("400000"), store, gateway });
+  app.log.level = "silent";
+  const deadline = Math.floor(Date.now() / 1000) + 3600;
+  const body = {
+    merchant: MERCHANT,
+    shopName: "Bean There",
+    itemName: "Latte",
+    geminiMarketId: MARKET,
+    offerAmount: "5000000",
+    depositDeadline: deadline,
+    maxYesPriceMicroUsd: "500000",
+    hedgeBudget: "500000000",
+  };
+  for (const coupons of [0, 1.5, -3, "abc", 100_001]) {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/promotions",
+      payload: { ...body, coupons },
+    });
+    assert.equal(res.statusCode, 400, `coupons=${coupons}`);
+    assert.equal(res.json().field, "coupons");
+  }
+  const plain = await app.inject({ method: "POST", url: "/api/promotions", payload: body });
+  assert.equal(plain.json().promotion.coupons, null);
+
+  const created = (
+    await app.inject({ method: "POST", url: "/api/promotions", payload: { ...body, coupons: 2 } })
+  ).json();
+  assert.deepEqual(created.promotion.coupons, { total: 2, sold: 0 });
+  gateway.addPromo({
+    promoPda: PROMO_PDA,
+    merchant: MERCHANT,
+    promoNonce: created.initializePromo.promoNonce,
+    offerAmount: "5000000",
+    depositDeadline: deadline,
+    marketId: MARKET,
+  });
+  await app.inject({
+    method: "POST",
+    url: `/api/promotions/${created.promotion.id}/confirm`,
+    payload: { promoPda: PROMO_PDA },
+  });
+
+  let n = 0;
+  const buy = () =>
+    store.recordDeposit(
+      {
+        signature: `SIG_${++n}`,
+        eventIndex: 0,
+        slot: n,
+        blockTime: null,
+        commitment: "finalized",
+        promo: PROMO_PDA,
+        purchase: `PURCHASE_${n}`,
+        customer: "CUSTOMER",
+        purchaseId: n.toString(16).padStart(32, "0"),
+        amount: "5000000",
+        depositedAt: 1_795_370_000,
+      },
+      created.promotion.id,
+    );
+  const get = async () =>
+    (await app.inject({ url: `/api/promotions/${created.promotion.id}` })).json().promotion;
+
+  await buy();
+  let one = await get();
+  assert.deepEqual(one.coupons, { total: 2, sold: 1 });
+  assert.equal(one.live.canBuy, true);
+
+  const { purchase } = await buy();
+  one = await get();
+  assert.deepEqual(one.coupons, { total: 2, sold: 2 });
+  assert.equal(one.live.pauseReason, "SOLD_OUT");
+  assert.equal(one.live.canBuy, false);
+  const dir = (await app.inject({ url: "/api/promotions" })).json().promotions;
+  assert.deepEqual(dir.find((p: { id: string }) => p.id === one.id).coupons, { total: 2, sold: 2 });
+  const dash = (await app.inject({ url: `/api/merchants/${MERCHANT}/dashboard` })).json();
+  assert.deepEqual(dash.promotions.find((p: { id: string }) => p.id === one.id).coupons, {
+    total: 2,
+    sold: 2,
+  });
+
+  // A refunded sale gives the coupon back.
+  await store.transitionPurchase(purchase.purchasePda, ["DEPOSITED"], "HEDGE_FAILED");
+  one = await get();
+  assert.deepEqual(one.coupons, { total: 2, sold: 1 });
+  assert.equal(one.live.canBuy, true);
   await app.close();
 });
