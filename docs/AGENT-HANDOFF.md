@@ -14,6 +14,36 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-19 12:20 ET · Dev 4 Rachel (Claude) · branch `arc` (PRs #14, #15, #16, all merged)
+
+- **#14 coupon total (API + DB):** `POST /api/promotions` takes optional `coupons` (1-100,000). Every
+  promotion response has `coupons: { total, sold }` or null (`sold` leaves out refunds/cancels). Sold
+  out = `live.pauseReason: "SOLD_OUT"`, and checkout refuses. Migration
+  `20261120000000_coupon_total.sql` is already run on the shared Supabase.
+- **#15 redesign into arc (`wincentive-live`):** the redesign plus `arc`. New promo sends `coupons`.
+  `SOLD_OUT` shows as "Sold out" (`isSoldOut()` in `lib/api.ts`). The coupons list/map poll every 5 s
+  with a "Live odds · Xs ago" badge, and odds and "x left" flash on change (`useChangeCount` in
+  `lib/hooks.ts`).
+- **#15 backend fix, important:** the Arc listener never recorded a deposit. The shared Supabase held
+  the Solana Devnet checkpoints (slot ~523M) while Arc blocks are ~73M, so it waited for a block that
+  doesn't exist. Arc now uses its own checkpoints `arc:deposits`, `arc:resolutions`, `arc:claims`
+  (`checkpointPrefix` in `orchestration/workers.ts`). `arc:deposits` was seeded on 2026-11-19. Pull
+  `arc` before running any backend.
+- **#16 Add money:** Circle's API faucet answers `Forbidden` for this account on every request. The
+  sheet now says so and offers Open faucet.circle.com, Copy wallet address and Back. Demo wallets
+  must be funded at faucet.circle.com beforehand.
+- **Real test purchase passed** (Arc testnet, escrow v2): email-wallet shop published "Latte $5, free
+  if Tulane wins" (10 coupons); one-tap pay (`/sign` then `/submit`); deposit recorded, simulated
+  hedge, `mark_hedged` on-chain (`HEDGED`, `autoPayout: true`); receipt shown; `coupons` 1/10. That
+  promo is still live (sales close Sat 12:00 PM).
+- **Not tested yet:** the automatic payout after a result. Needs a 5-min SOL window under 49%, or
+  Saturday's game.
+- **Needed:** a QuickNode Arc testnet endpoint (HTTP + WSS) from Dev 3. Then set `ARC_RPC_URL`,
+  `ARC_WSS_URL` and `ARC_EVENT_SOURCE=websocket`; no code change. QuickNode's free public Arc endpoint
+  rate-limits `eth_getLogs` and subscriptions. Also needed: an admin switching the default branch to
+  `arc`.
+- **Reminder:** only one backend runs the relayer key at a time. Dev 4's laptop backend is off now.
+
 ### 2026-11-18 21:19 ET · Dev 3 Dylan (Claude) · branch `wincentive-redesign`
 
 - Design review round (fresh reviewer, ranked notes) applied; wordmark lockup (the mark is the W of
