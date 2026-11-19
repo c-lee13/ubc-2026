@@ -178,8 +178,8 @@ const SHOPS = {
 /* ---------- promos ---------- */
 // market: a sports market id, "SOL_LIVE[:slot]" (rolling live window), or a fixed past SOL id.
 const PROMOS = [
-  // coupons: the shop's coupon count (proposed API field), soldBefore: sales before this sample's
-  // purchase list, sellingOutAt: when cards say "Selling out". Every cap is the default 49¢.
+  // coupons: the shop's coupon count (proposed API field; promos run 50-150), soldBefore: sales before
+  // this sample's purchase list. Every cap is the default 49¢; the budget covers every coupon at it.
   {
     key: "barton-latte-texas",
     shop: "barton",
@@ -187,9 +187,8 @@ const PROMOS = [
     offer: 5,
     market: "GEMI-NCAAF-2611212030-ARK-TEX-M-TEX",
     cap: 0.49,
-    budget: 120,
-    coupons: 40,
-    soldBefore: 18,
+    coupons: 120,
+    soldBefore: 58,
   },
   {
     key: "barton-coldbrew-sol",
@@ -198,10 +197,9 @@ const PROMOS = [
     offer: 4.5,
     market: "SOL_LIVE:0",
     cap: 0.49,
-    budget: 40,
     outcomeLabel: "SOL closes up",
-    coupons: 25,
-    soldBefore: 6,
+    coupons: 80,
+    soldBefore: 31,
   },
   {
     key: "barton-cortado-sol",
@@ -210,10 +208,9 @@ const PROMOS = [
     offer: 4.5,
     market: "SOL_WAIT",
     cap: 0.49,
-    budget: 30,
     outcomeLabel: "SOL closes up",
-    coupons: 20,
-    soldBefore: 9,
+    coupons: 60,
+    soldBefore: 44,
   },
   {
     key: "barton-latte-kentucky",
@@ -222,9 +219,8 @@ const PROMOS = [
     offer: 5,
     market: "GEMI-NCAAF-2611141700-UK-TEX-M-TEX",
     cap: 0.49,
-    budget: 80,
-    coupons: 40,
-    soldBefore: 31,
+    coupons: 100,
+    soldBefore: 88,
   },
   {
     key: "barton-mocha-sol",
@@ -233,10 +229,9 @@ const PROMOS = [
     offer: 5.5,
     market: SOL_NO,
     cap: 0.49,
-    budget: 30,
     outcomeLabel: "SOL closes up",
-    coupons: 20,
-    soldBefore: 12,
+    coupons: 75,
+    soldBefore: 61,
   },
   {
     key: "lomita-plate-texas",
@@ -245,9 +240,8 @@ const PROMOS = [
     offer: 9,
     market: "GEMI-NCAAF-2611212030-ARK-TEX-M-TEX",
     cap: 0.49,
-    budget: 150,
-    coupons: 30,
-    soldBefore: 23,
+    coupons: 150,
+    soldBefore: 112,
   },
   {
     key: "lomita-breakfast-sol",
@@ -256,10 +250,9 @@ const PROMOS = [
     offer: 3.75,
     market: "SOL_LIVE:1",
     cap: 0.49,
-    budget: 25,
     outcomeLabel: "SOL closes up",
-    coupons: 20,
-    soldBefore: 3,
+    coupons: 60,
+    soldBefore: 17,
   },
   {
     key: "spur-pint-cowboys",
@@ -268,9 +261,8 @@ const PROMOS = [
     offer: 7,
     market: "GEMI-NFL-2611230120-PHI-DAL-M-DAL",
     cap: 0.49,
-    budget: 100,
-    coupons: 50,
-    soldBefore: 14,
+    coupons: 100,
+    soldBefore: 46,
   },
   {
     key: "spur-marg-texas-cover",
@@ -279,9 +271,8 @@ const PROMOS = [
     offer: 10,
     market: "GEMI-NCAAF-2611212030-ARK-TEX-S-TEX-10.5",
     cap: 0.49,
-    budget: 60,
-    coupons: 30,
-    soldBefore: 5,
+    coupons: 90,
+    soldBefore: 27,
   },
   {
     key: "bluebonnet-kolache-spurs",
@@ -290,10 +281,8 @@ const PROMOS = [
     offer: 12,
     market: `${tipId("NBA", KICK_SAS_HOU, "HOU-SAS")}-M-SAS`,
     cap: 0.49,
-    budget: 60,
-    coupons: 12,
-    soldBefore: 9,
-    sellingOutAt: 4,
+    coupons: 50,
+    soldBefore: 41,
   },
   {
     key: "bluebonnet-kolache-sol",
@@ -302,10 +291,9 @@ const PROMOS = [
     offer: 12,
     market: SOL_YES,
     cap: 0.49,
-    budget: 60,
     outcomeLabel: "SOL closes up",
-    coupons: 15,
-    soldBefore: 10,
+    coupons: 60,
+    soldBefore: 52,
   },
 ].map((p) => {
   const nonce = BigInt(`0x${sha(`nonce:${p.key}`).slice(0, 14)}`);
@@ -321,10 +309,9 @@ const PROMOS = [
     market: p.market,
     outcomeLabelFixed: p.outcomeLabel ?? null,
     maxYesPriceMicroUsd: String(Math.round(p.cap * 1e6)),
-    hedgeBudget: USD(p.budget),
+    hedgeBudget: USD(Math.ceil(p.coupons * p.offer * p.cap)),
     coupons: p.coupons ?? null,
     soldBefore: p.soldBefore ?? 0,
-    sellingOutAt: p.sellingOutAt ?? 5,
     createdAt: T0 - 86400,
   };
 });
@@ -527,7 +514,6 @@ function promoDto(p, owner = false) {
                 (x) => x.promotionId === p.id && !x.cancelTx && x.hedge?.status !== "FAILED",
               ).length,
           ),
-          sellingOutAt: p.sellingOutAt ?? 5,
         }
       : null,
   };

@@ -27,12 +27,16 @@ export function ProfileButton({ balance = true }: { balance?: boolean }) {
       className="flex h-10 items-center gap-2 rounded-full pl-1 pr-1 text-ink-2 transition-colors hover:text-ink"
     >
       {ready && balance ? (
-        <span className="font-num pr-0.5 text-[17px] text-ink">{usd(w.wallet!.usdcBalance)}</span>
+        <span className="font-num pr-0.5 text-[15px] text-ink">{usd(w.wallet!.usdcBalance)}</span>
       ) : null}
       <span
         className={`grid h-9 w-9 place-items-center rounded-full ${ready ? "bg-ribbon text-black" : "bg-surface-2 ring-1 ring-inset ring-line-strong"}`}
       >
-        {ready ? <span className="font-title text-[15px]">{initial}</span> : <IconUser size={19} />}
+        {ready ? (
+          <span className="font-title text-[13.5px]">{initial}</span>
+        ) : (
+          <IconUser size={19} />
+        )}
       </span>
     </Link>
   );
@@ -43,7 +47,7 @@ export function TopBar({ right }: { right?: ReactNode }) {
     <header className="sticky top-0 z-30 border-b border-rule/70 bg-paper/80 backdrop-blur-xl">
       <Column className="flex h-[60px] items-center justify-between px-4">
         <Link href="/" aria-label="Wincentive home">
-          <Wordmark size={21} />
+          <Wordmark size={19} />
         </Link>
         {right ?? <ProfileButton />}
       </Column>
@@ -71,7 +75,7 @@ export function BottomTabs() {
               key={href}
               href={href}
               aria-current={active ? "page" : undefined}
-              className={`flex h-[60px] flex-col items-center justify-center gap-1 text-[12px] font-semibold transition-colors ${active ? "text-ink" : "text-ink-3 hover:text-ink-2"}`}
+              className={`flex h-[60px] flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors ${active ? "text-ink" : "text-ink-3 hover:text-ink-2"}`}
             >
               <Icon size={22} strokeWidth={active ? 2.1 : 1.8} />
               {label}

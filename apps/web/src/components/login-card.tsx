@@ -56,13 +56,13 @@ export function LoginCard({
       </Button>
       {busy ? (
         <p
-          className="flex items-center justify-center gap-2 text-[14px] text-ink-2"
+          className="flex items-center justify-center gap-2 text-[12.5px] text-ink-2"
           aria-live="polite"
         >
           <Spinner /> {phaseDetail(w.phase)}
         </p>
       ) : hint ? (
-        <p className="text-center text-[13.5px] text-ink-3">{hint}</p>
+        <p className="text-center text-[12px] text-ink-3">{hint}</p>
       ) : null}
       {w.problem ? (
         <Note tone="error" title={w.problem.title}>

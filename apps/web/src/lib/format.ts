@@ -133,7 +133,7 @@ export function marketMeaning(marketId: string): MarketMeaning {
 export function conditionText(outcomeLabel: string, marketId: string): string {
   const m = marketMeaning(marketId);
   if (m.kind === "UP_DOWN" && /up/i.test(outcomeLabel) && m.closesAt !== undefined)
-    return `${m.asset === "SOL" ? "Solana" : m.asset} is up at ${clock(m.closesAt)}`;
+    return `${m.asset === "SOL" ? "Solana" : m.asset}'s up at ${clock(m.closesAt)}`;
   return outcomeLabel;
 }
 

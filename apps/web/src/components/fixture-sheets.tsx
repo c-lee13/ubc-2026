@@ -25,8 +25,8 @@ export function FixtureSheets() {
       aria-label={sheet.kind === "otp" ? "Enter your code" : "Approve"}
     >
       <div className="w-full max-w-[480px] animate-sheet-up rounded-t-[28px] bg-paper-raised px-5 pb-8 pt-5 ring-1 ring-rule sm:rounded-[28px]">
-        <div className="mb-4 flex items-center gap-2 text-[14px] font-semibold text-ink-soft">
-          <Wordmark size={17} />
+        <div className="mb-4 flex items-center gap-2 text-[12.5px] font-semibold text-ink-soft">
+          <Wordmark size={15} />
         </div>
         {sheet.kind === "otp" ? (
           <form
@@ -37,8 +37,10 @@ export function FixtureSheets() {
             className="space-y-4"
           >
             <div>
-              <h2 className="font-display text-[28px]">Enter your code</h2>
-              <p className="mt-1.5 text-[15px] text-ink-soft">We sent 6 digits to {sheet.email}.</p>
+              <h2 className="font-display text-[25px]">Enter your code</h2>
+              <p className="mt-1.5 text-[13.5px] text-ink-soft">
+                We sent 6 digits to {sheet.email}.
+              </p>
             </div>
             <input
               id="fixture-otp"
@@ -46,7 +48,7 @@ export function FixtureSheets() {
               autoComplete="one-time-code"
               maxLength={6}
               placeholder="000000"
-              className={`${INPUT} font-num h-16 text-center text-[30px] tracking-[0.35em]`}
+              className={`${INPUT} font-num h-16 text-center text-[26.5px] tracking-[0.35em]`}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               autoFocus
@@ -57,11 +59,11 @@ export function FixtureSheets() {
             <button
               type="button"
               onClick={sheet.reject}
-              className="w-full text-center text-[15px] font-semibold text-ink-soft"
+              className="w-full text-center text-[13.5px] font-semibold text-ink-soft"
             >
               Cancel
             </button>
-            <p className="text-center text-[12px] text-ink-faint">
+            <p className="text-center text-[11px] text-ink-faint">
               Preview mode: any 6 digits work.
             </p>
           </form>
@@ -75,11 +77,11 @@ export function FixtureSheets() {
               type="button"
               onClick={sheet.reject}
               id="fixture-decline"
-              className="w-full text-center text-[15px] font-semibold text-ink-soft"
+              className="w-full text-center text-[13.5px] font-semibold text-ink-soft"
             >
               Decline
             </button>
-            <p className="text-center text-[12px] text-ink-faint">
+            <p className="text-center text-[11px] text-ink-faint">
               Preview mode: nothing leaves this browser.
             </p>
           </div>
@@ -95,16 +97,16 @@ function ApproveSummary({ what }: { what: string }) {
   if (!m) {
     return (
       <div>
-        <h2 className="font-display text-[28px]">Approve</h2>
-        <p className="mt-2 text-[17px] leading-snug">{what}</p>
+        <h2 className="font-display text-[25px]">Approve</h2>
+        <p className="mt-2 text-[15px] leading-snug">{what}</p>
       </div>
     );
   }
   return (
     <div>
-      <p className="text-[15px] text-ink-soft">Confirm payment</p>
-      <p className="font-num mt-1 text-[56px]">{m[1]}</p>
-      <p className="mt-2 text-[16px] leading-snug">
+      <p className="text-[13.5px] text-ink-soft">Confirm payment</p>
+      <p className="font-num mt-1 text-[50px]">{m[1]}</p>
+      <p className="mt-2 text-[14px] leading-snug">
         To <span className="font-semibold">{m[2]}</span> for {m[3]}
       </p>
     </div>

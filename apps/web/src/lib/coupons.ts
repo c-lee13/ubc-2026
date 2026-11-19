@@ -5,12 +5,12 @@ import type { PromotionDto } from "./api";
 import { store } from "./hooks";
 
 /**
- * Coupon supply ("14 left", "Selling out") and the counter's "Served" marks.
+ * Coupon supply ("64 left" and its bar) and the counter's "Served" marks.
  *
  * The API has no coupon count yet. The shop picks one when it creates a promo; until the backend
  * stores it, it lives in two places:
  *   1. a `coupons` field on the promotion, if the server sends one (scripts/sample-api.mjs does:
- *      the proposed shape `{ total, sold, sellingOutAt }`), and
+ *      the proposed shape `{ total, sold }`), and
  *   2. CLIENT-SIDE: this browser's registry, written by Create promo and the Edit sheet.
  * With neither, cards show no count (only "Sold out" when the API pauses for BUDGET_USED).
  */
@@ -18,32 +18,29 @@ export interface CouponSupply {
   total: number;
   sold: number;
   left: number;
-  sellingOutAt: number;
-  sellingOut: boolean;
   soldOut: boolean;
 }
 
 export interface ServerCoupons {
   total: number;
   sold: number;
-  sellingOutAt?: number;
 }
 
 interface Registered {
   total: number;
-  sellingOutAt: number;
 }
 
 const REG_KEY = "wincentive:coupons";
 const EVENT = "wincentive:coupons";
-export const DEFAULT_SELLING_OUT_AT = 5;
+/** New promos start at this many coupons (a real marketing moment, still a small risk budget). */
+export const DEFAULT_COUPONS = 100;
 
 function registry(): Record<string, Registered> {
   return store.get<Record<string, Registered>>(REG_KEY) ?? {};
 }
 
-export function registerCoupons(promotionId: string, total: number, sellingOutAt: number): void {
-  store.set(REG_KEY, { ...registry(), [promotionId]: { total, sellingOutAt } });
+export function registerCoupons(promotionId: string, total: number): void {
+  store.set(REG_KEY, { ...registry(), [promotionId]: { total } });
   window.dispatchEvent(new Event(EVENT));
 }
 
@@ -78,15 +75,7 @@ export function couponSupply(
   if (total === null) return null;
   const sold = Math.min(total, server?.sold ?? soldCount ?? 0);
   const left = budgetUsed ? 0 : Math.max(0, total - sold);
-  const sellingOutAt = local?.sellingOutAt ?? server?.sellingOutAt ?? DEFAULT_SELLING_OUT_AT;
-  return {
-    total,
-    sold,
-    left,
-    sellingOutAt,
-    sellingOut: left > 0 && left <= sellingOutAt,
-    soldOut: left === 0,
-  };
+  return { total, sold, left, soldOut: left === 0 };
 }
 
 /* ---------- counter: orders marked served (this device) ---------- */

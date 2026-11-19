@@ -29,7 +29,7 @@ function Hero() {
   const word = HERO_WORDS[i]!;
   return (
     <section className="pb-7 pt-3">
-      <h1 className="font-display text-[44px] leading-[0.95]">
+      <h1 className="font-display text-[39px] leading-[0.95]">
         Win and your
         <br />
         <span className="inline-block min-w-[3ch]" aria-live="polite">
@@ -41,7 +41,7 @@ function Hero() {
         is free.
       </h1>
       <div className="mt-3.5 flex items-center gap-2">
-        <p className="text-[16.5px] text-ink-soft">Underdogs only. Money back after the game.</p>
+        <p className="text-[14.5px] text-ink-soft">Underdogs only. Money back after the game.</p>
         <HowItWorksButton />
       </div>
     </section>
@@ -134,13 +134,13 @@ function CustomerCoupons() {
               role="tab"
               aria-selected={view === v}
               onClick={() => setView(v)}
-              className={`h-8 rounded-full px-4 text-[14px] font-semibold transition-colors ${view === v ? "bg-ink text-black" : "text-ink-soft hover:text-ink"}`}
+              className={`h-8 rounded-full px-4 text-[12.5px] font-semibold transition-colors ${view === v ? "bg-ink text-black" : "text-ink-soft hover:text-ink"}`}
             >
               {label}
             </button>
           ))}
         </div>
-        {view === "map" ? <span className="text-[14px] text-ink-soft">Austin</span> : null}
+        {view === "map" ? <span className="text-[12.5px] text-ink-soft">Austin</span> : null}
       </div>
       {view === "map" ? (
         res.data ? (
@@ -208,8 +208,8 @@ function PromoLists({
   if (byShop.length === 0 && paidOut.length === 0) {
     return (
       <div className="rounded-[24px] bg-paper-raised px-6 py-10 text-center ring-1 ring-inset ring-rule">
-        <p className="font-title text-[20px]">No promos running right now</p>
-        <p className="mt-1.5 text-[15px] text-ink-soft">
+        <p className="font-title text-[18px]">No promos running right now</p>
+        <p className="mt-1.5 text-[13.5px] text-ink-soft">
           Shops post them before big games. Check back soon.
         </p>
       </div>
@@ -223,7 +223,7 @@ function PromoLists({
           <SectionTitle>
             <span id="ending-soon">Ending soon</span>
           </SectionTitle>
-          <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1">
+          <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory scroll-px-4 items-start gap-3 overflow-x-auto px-4 pb-1">
             {endingSoon.map((p) => (
               <PromoCard key={p.id} p={p} now={now} variant="compact" />
             ))}
@@ -240,13 +240,13 @@ function PromoLists({
           return (
             <div key={shop.merchant} className="-mt-3 space-y-3">
               <div className="flex items-center gap-3 px-1">
-                <span className="font-title grid h-9 w-9 place-items-center rounded-full bg-paper-deep text-[14px] ring-1 ring-inset ring-line-strong">
+                <span className="font-title grid h-9 w-9 place-items-center rounded-full bg-paper-deep text-[12.5px] ring-1 ring-inset ring-line-strong">
                   {shop.name.charAt(0)}
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-[15px] font-semibold">{shop.name}</p>
+                  <p className="truncate text-[13.5px] font-semibold">{shop.name}</p>
                   {shop.location ? (
-                    <p className="truncate text-[13px] text-ink-faint">{shop.location}</p>
+                    <p className="truncate text-[11.5px] text-ink-faint">{shop.location}</p>
                   ) : null}
                 </div>
               </div>
@@ -269,12 +269,12 @@ function PromoLists({
                 <Link href={`/checkout/${p.id}`} className="flex items-center gap-3.5 px-4 py-3.5">
                   <Seal seed={p.promoPda ?? p.id} size={42} label={price(p.offerAmount)} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-semibold">
+                    <p className="truncate text-[13.5px] font-semibold">
                       {p.itemName} at {p.shop.name}
                     </p>
-                    <p className="truncate text-[13.5px] text-ink-soft">{happened(condition(p))}</p>
+                    <p className="truncate text-[12px] text-ink-soft">{happened(condition(p))}</p>
                   </div>
-                  <span className="font-num text-ribbon shrink-0 text-[19px]">Free</span>
+                  <span className="font-num text-ribbon shrink-0 text-[17px]">Free</span>
                   <span className="sr-only">, {price(p.offerAmount)} back</span>
                 </Link>
               </li>

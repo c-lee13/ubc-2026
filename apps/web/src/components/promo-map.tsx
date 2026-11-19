@@ -3,7 +3,6 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Map as MlMap, Marker as MlMarker } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { couponSupply } from "@/lib/coupons";
 import { AUSTIN, shopPlace, type Place } from "@/lib/places";
 import { price } from "@/lib/promo-view";
 import { IconClose } from "./icons";
@@ -48,7 +47,6 @@ interface ShopPin {
   place: Place;
   promos: Promo[];
   cheapest: string;
-  sellingOut: boolean;
 }
 
 function pinsOf(promos: Promo[]): { pins: ShopPin[]; unplaced: number } {
@@ -72,7 +70,6 @@ function pinsOf(promos: Promo[]): { pins: ShopPin[]; unplaced: number } {
       place,
       promos: list,
       cheapest: price(cheapest.offerAmount),
-      sellingOut: list.some((p) => couponSupply(p)?.sellingOut),
     });
   }
   return { pins, unplaced };
@@ -89,7 +86,7 @@ function pinElement(pin: ShopPin, onTap: () => void): HTMLButtonElement {
   );
   el.innerHTML = `<span class="wc-pin-tag"><span class="wc-pin-hole"></span>${pin.cheapest}${
     pin.promos.length > 1 ? `<span class="wc-pin-count">${pin.promos.length}</span>` : ""
-  }</span>${pin.sellingOut ? '<span class="wc-pin-hot"></span>' : ""}<span class="wc-pin-tip"></span>`;
+  }</span><span class="wc-pin-tip"></span>`;
   el.addEventListener("click", (e) => {
     e.stopPropagation();
     onTap();
@@ -241,7 +238,7 @@ export function PromoMap({ promos, now }: { promos: Promo[]; now: number | null 
         </div>
       ) : null}
       <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
-        <span className="rounded-full bg-paper/85 px-3.5 py-1.5 text-[13.5px] font-semibold ring-1 ring-rule backdrop-blur-md">
+        <span className="rounded-full bg-paper/85 px-3.5 py-1.5 text-[12px] font-semibold ring-1 ring-rule backdrop-blur-md">
           {pins.length} {pins.length === 1 ? "shop" : "shops"} running promos
           {unplaced ? (
             <span className="font-normal text-ink-soft">, {unplaced} not on the map</span>
@@ -251,7 +248,7 @@ export function PromoMap({ promos, now }: { promos: Promo[]; now: number | null 
       <button
         type="button"
         onClick={nearMe}
-        className="absolute bottom-10 right-4 inline-flex h-11 items-center gap-2 rounded-full bg-ink px-4 text-[14.5px] font-semibold text-black shadow-lg"
+        className="absolute bottom-10 right-4 inline-flex h-11 items-center gap-2 rounded-full bg-ink px-4 text-[13px] font-semibold text-black shadow-lg"
       >
         {locating ? (
           <Spinner />
@@ -261,7 +258,7 @@ export function PromoMap({ promos, now }: { promos: Promo[]; now: number | null 
         Near me
       </button>
       {locNote ? (
-        <div className="absolute inset-x-4 bottom-24 flex items-center justify-between gap-3 rounded-2xl bg-paper-raised px-4 py-3 text-[14px] ring-1 ring-rule">
+        <div className="absolute inset-x-4 bottom-24 flex items-center justify-between gap-3 rounded-2xl bg-paper-raised px-4 py-3 text-[12.5px] ring-1 ring-rule">
           <span>{locNote}</span>
           <button
             type="button"
@@ -278,7 +275,7 @@ export function PromoMap({ promos, now }: { promos: Promo[]; now: number | null 
         {shop ? (
           <div className="space-y-3">
             {shop.location ? (
-              <p className="-mt-1 text-[14px] text-ink-soft">{shop.location}</p>
+              <p className="-mt-1 text-[12.5px] text-ink-soft">{shop.location}</p>
             ) : null}
             {shop.promos.map((p) => (
               <PromoCard key={p.id} p={p} now={now} sub="kickoff" />

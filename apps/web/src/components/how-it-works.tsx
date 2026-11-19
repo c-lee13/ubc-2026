@@ -21,7 +21,7 @@ export function SplitVisual({
   // the line ends always meet their labels.
   return (
     <div className="flex items-center gap-0 rounded-[22px] bg-paper px-4 py-5 ring-1 ring-rule">
-      <span className="font-num grid h-[60px] w-[60px] shrink-0 place-items-center rounded-full bg-paper-raised text-[21px] ring-1 ring-line-strong">
+      <span className="font-num grid h-[60px] w-[60px] shrink-0 place-items-center rounded-full bg-paper-raised text-[18.5px] ring-1 ring-line-strong">
         {price}
       </span>
       <svg width="84" height="120" viewBox="0 0 84 120" className="shrink-0" aria-hidden>
@@ -49,7 +49,7 @@ export function SplitVisual({
         <circle cx="78" cy="18" r="5" fill="#a99db9" />
         <circle cx="78" cy="102" r="6" fill="#ff4fb0" />
       </svg>
-      <div className="flex h-[120px] min-w-0 flex-1 flex-col justify-between pl-2 text-[14px] leading-tight">
+      <div className="flex h-[120px] min-w-0 flex-1 flex-col justify-between pl-2 text-[12.5px] leading-tight">
         <div className="-mt-1">
           <p className="font-semibold text-ink">Your {item}, now</p>
           <p className="text-ink-faint">Yours either way</p>
@@ -84,17 +84,17 @@ export function HowItWorks({
       <ol className="space-y-3.5">
         {STEPS.map((s, i) => (
           <li key={s.title} className="flex gap-3.5">
-            <span className="font-num grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-3 text-[16px]">
+            <span className="font-num grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-3 text-[14px]">
               {i + 1}
             </span>
             <div>
               <p className="font-semibold text-ink">{s.title}</p>
-              <p className="text-[14.5px] text-ink-2">{s.body}</p>
+              <p className="text-[13px] text-ink-2">{s.body}</p>
             </div>
           </li>
         ))}
       </ol>
-      <p className="text-[13.5px] leading-snug text-ink-3">
+      <p className="text-[12px] leading-snug text-ink-3">
         Every promo is an underdog, under 50%. Nothing extra is ever charged.
       </p>
     </div>

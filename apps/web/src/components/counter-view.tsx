@@ -6,9 +6,9 @@ import type { PurchaseSummaryDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { servedCodes, setServed } from "@/lib/coupons";
 import { describe } from "@/lib/errors";
-import { clock, countdown, displayCode } from "@/lib/format";
+import { clock, displayCode } from "@/lib/format";
 import { useNowSeconds, useOrigin, usePoll } from "@/lib/hooks";
-import { condition, oddsPct, price, shortCountdown } from "@/lib/promo-view";
+import { condition, minSec, oddsPct, price, shortCountdown } from "@/lib/promo-view";
 import { IconBack, IconCheck } from "./icons";
 import { FitText, Note, Spinner, Wordmark } from "./kit";
 import { CouponsLeft, type Promo } from "./promo-card";
@@ -67,14 +67,14 @@ export function CounterView({ promoId }: { promoId: string }) {
           >
             <IconBack size={22} />
           </Link>
-          <Wordmark size={18} />
+          <Wordmark size={16} />
           <span className="w-10" />
         </header>
         <section className="rounded-[28px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
-          <p className="font-display text-[26px] leading-tight">
+          <p className="font-display text-[23px] leading-tight">
             {p.itemName} {price(p.offerAmount)}, free if {cond}
           </p>
-          <p className="mt-1 text-[15px] text-ink-soft">{p.shop.name}</p>
+          <p className="mt-1 text-[13.5px] text-ink-soft">{p.shop.name}</p>
           <div className="relative mx-auto mt-5 max-w-[240px] overflow-hidden rounded-[20px] bg-white p-3 lg:max-w-none lg:p-4">
             {origin ? (
               <div className={selling ? "" : "opacity-15"}>
@@ -85,7 +85,7 @@ export function CounterView({ promoId }: { promoId: string }) {
             )}
             {!selling ? (
               <div className="absolute inset-0 grid place-items-center">
-                <span className="font-display rounded-xl bg-black px-4 py-2 text-[24px] text-white">
+                <span className="font-display rounded-xl bg-black px-4 py-2 text-[21.5px] text-white">
                   {p.live?.phase === "PAUSED"
                     ? p.live.pauseReason === "BUDGET_USED"
                       ? "Sold out"
@@ -97,16 +97,16 @@ export function CounterView({ promoId }: { promoId: string }) {
           </div>
           {selling ? (
             <>
-              <p className="font-title mt-4 text-center text-[20px]">Scan to buy</p>
+              <p className="font-title mt-4 text-center text-[18px]">Scan to buy</p>
               <div className="mt-4 grid grid-cols-2 gap-4 text-center">
                 <div>
-                  <FitText max={52} className="font-num text-note">
+                  <FitText max={46} className="font-num text-note">
                     {Math.round(oddsPct(p.live?.liveAskMicroUsd) ?? 0)}%
                   </FitText>
-                  <p className="mt-1 text-[14px] text-ink-soft">chance it&apos;s free</p>
+                  <p className="mt-1 text-[12.5px] text-ink-soft">chance it&apos;s free</p>
                 </div>
                 <div>
-                  <FitText max={52} className="font-num">
+                  <FitText max={46} className="font-num">
                     {now === null
                       ? "–"
                       : p.depositDeadline - now > 12 * 3600
@@ -114,10 +114,10 @@ export function CounterView({ promoId }: { promoId: string }) {
                             weekday: "short",
                           })
                         : p.depositDeadline - now < 3600
-                          ? countdown(p.depositDeadline - now)
+                          ? minSec(p.depositDeadline - now)
                           : shortCountdown(p.depositDeadline - now)}
                   </FitText>
-                  <p className="mt-1 text-[14px] text-ink-soft">
+                  <p className="mt-1 text-[12.5px] text-ink-soft">
                     {now !== null && p.depositDeadline - now > 12 * 3600
                       ? `kickoff ${clock(p.depositDeadline)}`
                       : "left to buy"}
@@ -134,10 +134,10 @@ export function CounterView({ promoId }: { promoId: string }) {
 
       <section aria-labelledby="orders" className="mt-8 min-w-0 lg:mt-[60px]">
         <div className="flex items-baseline justify-between gap-3">
-          <h1 id="orders" className="font-display text-[28px]">
+          <h1 id="orders" className="font-display text-[25px]">
             Orders
           </h1>
-          <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-note">
+          <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-note">
             <span className="h-2 w-2 animate-pulse-dot rounded-full bg-note" aria-hidden />
             Live
           </span>
@@ -172,19 +172,19 @@ export function CounterView({ promoId }: { promoId: string }) {
         </div>
         {done.length > 0 ? (
           <div className="mt-8">
-            <p className="font-title mb-2 text-[17px] text-ink-soft">Served ({done.length})</p>
+            <p className="font-title mb-2 text-[15px] text-ink-soft">Served ({done.length})</p>
             <ul className="divide-y divide-rule overflow-hidden rounded-[20px] bg-paper-raised ring-1 ring-inset ring-rule">
               {done.map((r) => (
                 <li key={r.purchasePda} className="flex items-center gap-3 px-4 py-3">
                   <IconCheck size={18} className="text-note" />
-                  <span className="font-num text-[22px]">
+                  <span className="font-num text-[19.5px]">
                     {displayCode(r.orderCode, r.purchasePda)}
                   </span>
-                  <span className="text-[14px] text-ink-soft">{clock(r.depositedAt)}</span>
+                  <span className="text-[12.5px] text-ink-soft">{clock(r.depositedAt)}</span>
                   <button
                     type="button"
                     onClick={() => toggle(r.purchasePda, false)}
-                    className="ml-auto text-[14px] font-semibold text-ink-soft hover:text-ink"
+                    className="ml-auto text-[12.5px] font-semibold text-ink-soft hover:text-ink"
                   >
                     Undo
                   </button>
@@ -212,17 +212,17 @@ function OrderRow({
     return (
       <div className="flex items-center justify-between gap-4 rounded-[24px] bg-ribbon px-5 py-4 text-white">
         <div className="min-w-0">
-          <FitText max={44} className="font-display leading-none">
+          <FitText max={39} className="font-display leading-none">
             {displayCode(r.orderCode, r.purchasePda)}
           </FitText>
-          <p className="mt-1.5 text-[15px] text-white/85">
+          <p className="mt-1.5 text-[13.5px] text-white/85">
             {item}, paid {clock(r.depositedAt)}
           </p>
         </div>
         <button
           type="button"
           onClick={onServed}
-          className="h-12 shrink-0 rounded-[16px] bg-white px-4 text-[16px] font-bold text-black transition-transform active:scale-[0.97]"
+          className="h-12 shrink-0 rounded-[16px] bg-white px-4 text-[14px] font-bold text-black transition-transform active:scale-[0.97]"
         >
           Mark served
         </button>
@@ -230,17 +230,13 @@ function OrderRow({
     );
   }
   return (
-    <div
-      className={`flex items-center justify-between gap-4 rounded-[24px] px-5 py-4 ring-1 ring-inset ${refund ? "bg-stamp-soft ring-stamp/30" : "bg-paper-raised ring-rule"}`}
-    >
-      <p
-        className={`font-display text-[44px] leading-none ${refund ? "text-stamp" : "text-ink-soft"}`}
-      >
+    <div className="flex items-center justify-between gap-4 rounded-[24px] bg-paper-raised px-5 py-4 ring-1 ring-inset ring-rule">
+      <p className="font-display text-[35.5px] leading-none text-ink-faint">
         {displayCode(r.orderCode, r.purchasePda)}
       </p>
-      <p className="text-right text-[15px] font-semibold">
+      <p className="text-right text-[13.5px] font-semibold">
         {refund ? (
-          <span className="text-stamp">Don&apos;t serve: paying back</span>
+          <span className="whitespace-nowrap text-sim">Refunding, don&apos;t serve</span>
         ) : (
           <span className="inline-flex items-center gap-2 text-ink-soft">
             <Spinner /> Confirming

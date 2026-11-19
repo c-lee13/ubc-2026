@@ -84,8 +84,8 @@ export function AddMoneySheet({
     return (
       <Sheet open onClose={onClose} title="Add money">
         <div className="pt-2 text-center">
-          <p className="font-num text-[76px] leading-none">${amount}</p>
-          <p className="mt-2 text-[14.5px] text-ink-2">
+          <p className="font-num text-[67.5px] leading-none">${amount}</p>
+          <p className="mt-2 text-[13px] text-ink-2">
             Balance after <span className="font-semibold text-ink">{usd(balance + base)}</span>
           </p>
         </div>
@@ -97,7 +97,7 @@ export function AddMoneySheet({
               role="radio"
               aria-checked={a === amount}
               onClick={() => setAmount(a)}
-              className={`font-num h-14 rounded-2xl text-[24px] transition-colors ${a === amount ? "bg-ink text-black" : "bg-surface-2 text-ink ring-1 ring-inset ring-line-strong hover:bg-surface-3"}`}
+              className={`font-num h-14 rounded-2xl text-[21.5px] transition-colors ${a === amount ? "bg-ink text-black" : "bg-surface-2 text-ink ring-1 ring-inset ring-line-strong hover:bg-surface-3"}`}
             >
               ${a}
             </button>
@@ -106,14 +106,14 @@ export function AddMoneySheet({
         <div className="mt-5 flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 ring-1 ring-inset ring-line">
           <CardArt />
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-semibold">Wincentive test card</p>
-            <p className="text-[13.5px] text-ink-3">···· 4242</p>
+            <p className="text-[13.5px] font-semibold">Wincentive test card</p>
+            <p className="text-[12px] text-ink-3">···· 4242</p>
           </div>
         </div>
         <Button size="lg" className="mt-5" onClick={() => setStage("pay")}>
           Add ${amount}
         </Button>
-        <p className="mt-3 text-center text-[12.5px] text-ink-3">Pays for any promo in one tap.</p>
+        <p className="mt-3 text-center text-[11px] text-ink-3">Pays for any promo in one tap.</p>
       </Sheet>
     );
   }
@@ -126,7 +126,7 @@ export function AddMoneySheet({
       onCancel={() => setStage("amount")}
       error={
         stage === "error" ? (
-          <div className="space-y-3 text-[15px] leading-snug">
+          <div className="space-y-3 text-[13.5px] leading-snug">
             <p className="font-semibold text-white">
               {faucetDown ? "Top-up limit reached" : (problem?.title ?? "Payment not completed")}
             </p>
@@ -162,13 +162,13 @@ export function AddMoneySheet({
                   {copied ? "Address copied" : "Copy wallet address"}
                 </button>
               ) : (
-                <p className="break-all text-[12.5px] text-[#98989f]">{w.wallet.address}</p>
+                <p className="break-all text-[11px] text-[#98989f]">{w.wallet.address}</p>
               )
             ) : null}
             <button
               type="button"
               onClick={() => setStage("pay")}
-              className="h-[50px] w-full rounded-[12px] bg-[#2c2c2e] text-[17px] font-semibold text-white"
+              className="h-[50px] w-full rounded-[12px] bg-[#2c2c2e] text-[15px] font-semibold text-white"
             >
               Try Again
             </button>
@@ -232,12 +232,12 @@ function PaySheet({
       aria-modal="true"
       aria-label={`Pay ${total}`}
     >
-      <div className="ios-dim absolute inset-0 bg-black/70" />
+      <div className="ios-dim absolute inset-0 bg-black/85" />
 
       {stage === "pay" ? (
         <>
           {/* Side-button prompt, at the height of a phone's side button. */}
-          <div className="pointer-events-none fixed right-4 top-[19%] text-right text-[17px] font-semibold leading-[1.15] text-white [text-shadow:0_1px_12px_rgba(0,0,0,0.8)]">
+          <div className="pointer-events-none fixed right-4 top-[19%] text-right text-[15px] font-semibold leading-[1.15] text-white [text-shadow:0_1px_12px_rgba(0,0,0,0.8)]">
             Double-Click
             <br />
             to Pay
@@ -252,7 +252,7 @@ function PaySheet({
       <div className="ios-sheet absolute inset-x-2 bottom-2 mx-auto max-w-[464px] overflow-hidden rounded-[38px] bg-[#1c1c1e] text-white pb-[max(env(safe-area-inset-bottom),12px)]">
         {/* Header: neutral pay glyph, close */}
         <div className="flex items-center justify-between px-5 pb-3 pt-5">
-          <span className="inline-flex items-center gap-1.5 text-[20px] font-semibold tracking-[-0.02em]">
+          <span className="inline-flex items-center gap-1.5 text-[18px] font-semibold tracking-[-0.02em]">
             <PayGlyph /> Pay
           </span>
           {stage === "pay" ? (
@@ -280,8 +280,8 @@ function PaySheet({
         <div className="mx-4 flex items-center gap-3 border-b border-[#38383a] py-3">
           <CardArt small />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[17px] leading-tight">Wincentive test card</p>
-            <p className="text-[15px] leading-tight text-[#98989f]">···· 4242</p>
+            <p className="truncate text-[15px] leading-tight">Wincentive test card</p>
+            <p className="text-[13.5px] leading-tight text-[#98989f]">···· 4242</p>
           </div>
           <svg width="8" height="13" viewBox="0 0 8 13" aria-hidden className="text-[#5a5a5f]">
             <path
@@ -297,8 +297,8 @@ function PaySheet({
 
         {/* Total */}
         <div className="mx-4 flex items-baseline justify-between py-3.5">
-          <span className="text-[17px] text-[#98989f]">Pay Wincentive</span>
-          <span className="text-[22px] font-semibold tracking-[-0.01em]">{total}</span>
+          <span className="text-[15px] text-[#98989f]">Pay Wincentive</span>
+          <span className="text-[19.5px] font-semibold tracking-[-0.01em]">{total}</span>
         </div>
 
         {/* Confirm area */}
@@ -327,12 +327,12 @@ function PaySheet({
               {stage === "pay" ? (
                 <>
                   <SideButtonGlyph />
-                  <span className="text-[15px] text-[#98989f]">Confirm with Side Button</span>
+                  <span className="text-[13.5px] text-[#98989f]">Confirm with Side Button</span>
                 </>
               ) : (
                 <>
                   <FaceCheck done={stage === "done"} />
-                  <span className="text-[15px] font-semibold text-white">
+                  <span className="text-[13.5px] font-semibold text-white">
                     {stage === "done" ? "Done" : " "}
                   </span>
                 </>

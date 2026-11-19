@@ -20,6 +20,7 @@ export function happened(cond: string): string {
     .replace(/\bwin\b/, "won")
     .replace(/\bcloses\b/, "closed")
     .replace(/\bis up\b/, "was up")
+    .replace(/'s up\b/, " was up")
     .replace(/\bscores\b/, "scored")
     .replace(/\bbeats\b/, "beat");
 }
@@ -32,6 +33,12 @@ export function shortCountdown(seconds: number): string {
   if (s < 86_400)
     return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m`;
   return `${Math.floor(s / 86_400)}d`;
+}
+
+/** Under an hour, as minutes and seconds: "9m 21s" (never mistaken for a clock time). */
+export function minSec(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
 }
 
 /** "8:45 PM" for today (or within 12 hours), "Sat 3:30 PM" further out. */

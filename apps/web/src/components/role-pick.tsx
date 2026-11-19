@@ -9,13 +9,13 @@ export function RolePick({ onPick }: { onPick: (r: Role) => void }) {
   return (
     <main className="relative min-h-dvh overflow-hidden">
       <div className="relative mx-auto flex min-h-dvh w-full max-w-[480px] flex-col px-6 pb-10 pt-[16dvh]">
-        <Wordmark size={34} className="self-start" />
-        <h1 className="font-display mt-8 text-[56px] leading-[0.92]">
+        <Wordmark size={30} className="self-start" />
+        <h1 className="font-display mt-8 text-[50px] leading-[0.92]">
           Win and
           <br />
           it&apos;s free.
         </h1>
-        <p className="mt-4 max-w-[19rem] text-[17px] leading-snug text-ink-soft">
+        <p className="mt-4 max-w-[19rem] text-[15px] leading-snug text-ink-soft">
           Buy your coffee now. If your team wins, the money comes back.
         </p>
 
@@ -64,8 +64,8 @@ function ChoiceButton({
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="font-title block text-[19px]">{title}</span>
-        <span className={`block text-[14px] ${primary ? "text-black/60" : "text-ink-3"}`}>
+        <span className="font-title block text-[17px]">{title}</span>
+        <span className={`block text-[12.5px] ${primary ? "text-black/60" : "text-ink-3"}`}>
           {sub}
         </span>
       </span>

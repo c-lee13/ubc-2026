@@ -33,7 +33,7 @@ export function Mark({ className = "h-7" }: { className?: string }) {
  * starts at x=8, and the price tag reaches x=213 at the height of the i's dot. All in em, so it
  * scales with `size`.
  */
-export function Wordmark({ size = 20, className = "" }: { size?: number; className?: string }) {
+export function Wordmark({ size = 18, className = "" }: { size?: number; className?: string }) {
   return (
     <span
       role="img"
@@ -74,9 +74,9 @@ const VARIANT: Record<Variant, string> = {
   danger: "bg-danger/15 text-danger ring-1 ring-inset ring-danger/30 hover:bg-danger/20",
 };
 const SIZE: Record<Size, string> = {
-  sm: "h-9 rounded-full px-3.5 text-[14px] gap-1.5",
-  md: "h-11 rounded-full px-5 text-[15px] gap-2",
-  lg: "h-[58px] w-full rounded-[18px] px-6 text-[17px] gap-2.5",
+  sm: "h-9 rounded-full px-3.5 text-[12.5px] gap-1.5",
+  md: "h-11 rounded-full px-5 text-[13.5px] gap-2",
+  lg: "h-[58px] w-full rounded-[18px] px-6 text-[15px] gap-2.5",
 };
 
 export function Button({
@@ -152,7 +152,7 @@ export function Note({
       className="flex gap-3 rounded-2xl bg-surface-2 px-4 py-3.5 ring-1 ring-inset ring-line"
     >
       <IconInfo size={18} className={`mt-0.5 shrink-0 ${color}`} />
-      <div className="min-w-0 flex-1 text-[14px] leading-snug">
+      <div className="min-w-0 flex-1 text-[12.5px] leading-snug">
         <p className="font-semibold text-ink">{title}</p>
         {children ? <div className="mt-0.5 text-ink-2">{children}</div> : null}
         {action ? <div className="mt-2.5">{action}</div> : null}
@@ -216,7 +216,7 @@ export function Sheet({
         </div>
         {title ? (
           <div className="flex items-center justify-between gap-3 px-5 pb-1 pt-1">
-            <h2 id={id} className="font-title text-[20px]">
+            <h2 id={id} className="font-title text-[18px]">
               {title}
             </h2>
             <IconButton label="Close" onClick={onClose} className="-mr-2">
@@ -235,7 +235,7 @@ export function Sheet({
 
 export function Odds({
   pct,
-  size = 30,
+  size = 27,
   label = "chance it's free",
   align = "right",
   className = "",
@@ -260,7 +260,7 @@ export function Odds({
         {`${Math.round(pct)}%`}
       </span>
       {label ? (
-        <span className="mt-1 text-[12.5px] font-medium leading-tight text-ink-soft">{label}</span>
+        <span className="mt-1 text-[11px] font-medium leading-tight text-ink-soft">{label}</span>
       ) : null}
     </div>
   );
@@ -381,11 +381,12 @@ export function FitText({
 export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
     <div className="mb-3 flex items-baseline justify-between gap-3">
-      <h2 className="font-title text-[19px]">{children}</h2>
-      {aside ? <div className="text-[13.5px] text-ink-3">{aside}</div> : null}
+      <h2 className="font-title text-[17px]">{children}</h2>
+      {aside ? <div className="text-[12px] text-ink-3">{aside}</div> : null}
     </div>
   );
 }
 
+// 16px on purpose: iOS Safari zooms the page into any input smaller than that.
 export const INPUT =
   "block w-full rounded-[14px] bg-surface-2 px-4 text-[16px] text-ink ring-1 ring-inset ring-line-strong placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-chain disabled:opacity-60";

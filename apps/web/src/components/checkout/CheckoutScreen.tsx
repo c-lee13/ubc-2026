@@ -7,10 +7,18 @@ import { ApiError, type CheckoutStatusDto, type PromotionDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { publicConfig } from "@/lib/config";
 import { describe, type Problem } from "@/lib/errors";
-import { clock, countdown, usd } from "@/lib/format";
+import { clock, usd } from "@/lib/format";
 import { useNowSeconds, usePoll } from "@/lib/hooks";
 import { withArticle } from "@/lib/items";
-import { condition, happened, oddsPct, price, sellState, shortCountdown } from "@/lib/promo-view";
+import {
+  condition,
+  happened,
+  oddsPct,
+  price,
+  sellState,
+  minSec,
+  shortCountdown,
+} from "@/lib/promo-view";
 import { rememberPurchase } from "@/lib/purchases";
 import { WalletUserError } from "@/lib/wallet/driver";
 import { useWallet } from "@/lib/wallet/session";
@@ -46,7 +54,7 @@ export function CheckoutScreen({ promoId }: { promoId: string }) {
         >
           <IconClose size={22} />
         </Link>
-        <Wordmark size={18} />
+        <Wordmark size={16} />
         {p ? (
           <HowItWorksButton
             item={p.itemName.toLowerCase()}
@@ -102,7 +110,7 @@ function Offer({ p, now }: { p: Promo; now: number | null }) {
 
   return (
     <div className="animate-sheet-up">
-      <p className="mb-3 text-center text-[14px] text-ink-soft">
+      <p className="mb-3 text-center text-[12.5px] text-ink-soft">
         <span className="font-semibold text-ink">{p.shop.name}</span>
         {p.shop.location ? ` on ${p.shop.location.split(",")[0]}` : ""}
       </p>
@@ -133,10 +141,10 @@ function Offer({ p, now }: { p: Promo; now: number | null }) {
             <div className="min-w-0">
               {odds !== null ? (
                 <>
-                  <FitText max={54} className="font-num text-note">
+                  <FitText max={48} className="font-num text-note">
                     {Math.round(odds)}%
                   </FitText>
-                  <span className="mt-1 block text-[12.5px] font-medium text-ink-soft">
+                  <span className="mt-1 block text-[11px] font-medium text-ink-soft">
                     chance it&apos;s free
                   </span>
                 </>
@@ -144,10 +152,10 @@ function Offer({ p, now }: { p: Promo; now: number | null }) {
             </div>
             {st.kind === "selling" && left !== null && left > 0 ? (
               <div className="min-w-0 text-right">
-                <FitText max={54} className="font-num">
-                  {left > 12 * 3600 ? day : left < 3600 ? countdown(left) : shortCountdown(left)}
+                <FitText max={48} className="font-num">
+                  {left > 12 * 3600 ? day : left < 3600 ? minSec(left) : shortCountdown(left)}
                 </FitText>
-                <span className="mt-1 block text-[12.5px] font-medium text-ink-soft">
+                <span className="mt-1 block text-[11px] font-medium text-ink-soft">
                   {left > 12 * 3600 ? `kickoff ${clock(p.depositDeadline)}` : "left to buy"}
                 </span>
               </div>
@@ -337,11 +345,11 @@ function PayPanel({ promo, cond, now }: { promo: Promo; cond: string; now: numbe
   if (blocker) {
     return (
       <div>
-        <p className="font-title text-[20px]">{blocker.title}</p>
-        <p className="mt-1 text-[15px] text-ink-soft">{blocker.detail}</p>
+        <p className="font-title text-[18px]">{blocker.title}</p>
+        <p className="mt-1 text-[13.5px] text-ink-soft">{blocker.detail}</p>
         <Link
           href="/"
-          className="mt-4 flex h-[58px] w-full items-center justify-center rounded-[18px] bg-surface-3 text-[17px] font-semibold text-ink"
+          className="mt-4 flex h-[58px] w-full items-center justify-center rounded-[18px] bg-surface-3 text-[15px] font-semibold text-ink"
         >
           See other promos
         </Link>
@@ -352,7 +360,7 @@ function PayPanel({ promo, cond, now }: { promo: Promo; cond: string; now: numbe
   if (!ready) {
     return (
       <div>
-        <p className="font-title mb-3 text-[19px]">Sign in to pay</p>
+        <p className="font-title mb-3 text-[17px]">Sign in to pay</p>
         <LoginCard cta="Continue with email" />
       </div>
     );
@@ -363,14 +371,14 @@ function PayPanel({ promo, cond, now }: { promo: Promo; cond: string; now: numbe
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <IconWallet size={20} className="text-ink-soft" />
-          <span className="text-[15px] text-ink-soft">Balance</span>
-          <span className="font-num text-[22px]">{s ? usd(balance) : <Spinner />}</span>
+          <span className="text-[13.5px] text-ink-soft">Balance</span>
+          <span className="font-num text-[19.5px]">{s ? usd(balance) : <Spinner />}</span>
         </div>
         {short ? null : (
           <button
             type="button"
             onClick={() => setTopUp(true)}
-            className="text-[15px] font-semibold text-chain hover:text-ink"
+            className="text-[13.5px] font-semibold text-chain hover:text-ink"
           >
             Add money
           </button>
@@ -402,7 +410,7 @@ function PayPanel({ promo, cond, now }: { promo: Promo; cond: string; now: numbe
         </Button>
       )}
 
-      <p className="text-center text-[13.5px] text-ink-soft">
+      <p className="text-center text-[12px] text-ink-soft">
         {short
           ? `You need ${usd(BigInt(promo.offerAmount) - balance)} more.`
           : "Money back right after the game."}

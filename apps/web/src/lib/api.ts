@@ -59,7 +59,7 @@ export interface PromotionDto {
    * PROPOSED, not in apps/api yet: the shop's coupon count. scripts/sample-api.mjs sends it; the
    * real API doesn't, so lib/coupons.ts falls back to this browser's registry.
    */
-  coupons?: { total: number; sold: number; sellingOutAt?: number } | null;
+  coupons?: { total: number; sold: number } | null;
 }
 
 /** SIMULATED: assumes the simulated fills were real. */

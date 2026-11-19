@@ -43,18 +43,20 @@ export function Profile() {
       {ready ? (
         <>
           <div className="flex items-center gap-4 pt-2">
-            <span className="font-display grid h-16 w-16 place-items-center rounded-full bg-ribbon text-[28px] text-white">
+            <span className="font-display grid h-16 w-16 place-items-center rounded-full bg-ribbon text-[25px] text-white">
               {(w.email?.[0] ?? "").toUpperCase()}
             </span>
             <div className="min-w-0">
-              <p className="font-title truncate text-[20px]">{w.email}</p>
-              <p className="text-[14px] text-ink-soft">{merchant ? "Shop account" : "Customer"}</p>
+              <p className="font-title truncate text-[18px]">{w.email}</p>
+              <p className="text-[12.5px] text-ink-soft">
+                {merchant ? "Shop account" : "Customer"}
+              </p>
             </div>
           </div>
 
           <section className="mt-6 rounded-[28px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
-            <p className="text-[14px] text-ink-soft">Balance</p>
-            <p className="font-num mt-1 text-[60px]">{usd(w.wallet!.usdcBalance)}</p>
+            <p className="text-[12.5px] text-ink-soft">Balance</p>
+            <p className="font-num mt-1 text-[53.5px]">{usd(w.wallet!.usdcBalance)}</p>
             <Button size="lg" className="mt-4" onClick={() => setTopUp(true)}>
               Add money
             </Button>
@@ -62,8 +64,8 @@ export function Profile() {
         </>
       ) : (
         <section className="rounded-[28px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
-          <p className="font-display text-[30px]">Sign in</p>
-          <p className="mb-4 mt-1.5 text-[15px] text-ink-soft">
+          <p className="font-display text-[26.5px]">Sign in</p>
+          <p className="mb-4 mt-1.5 text-[13.5px] text-ink-soft">
             Your balance, coupons and order codes, on any phone.
           </p>
           <LoginCard />
@@ -75,7 +77,7 @@ export function Profile() {
           <IconStore size={22} className="shrink-0 text-ink-soft" />
           <div className="min-w-0 flex-1">
             <p className="font-semibold">Merchant workspace</p>
-            <p className="text-[13.5px] text-ink-soft">Run promos for your shop</p>
+            <p className="text-[12px] text-ink-soft">Run promos for your shop</p>
           </div>
           <Toggle
             label="Merchant workspace"
@@ -140,7 +142,7 @@ export function Profile() {
           </>
         ) : null}
       </ul>
-      <p className="mt-6 text-center text-[12px] text-ink-faint">
+      <p className="mt-6 text-center text-[11px] text-ink-faint">
         Payments by Circle on Arc. Test mode.
       </p>
 

@@ -19,7 +19,7 @@ import { Seal } from "./voucher";
 
 export type Promo = PromotionDto & { coupons?: ServerCoupons | null };
 
-/** Coupons left, with the "Selling out" badge once the shop's threshold is reached. */
+/** Coupons left: the count and a bar. */
 export function CouponsLeft({
   p,
   sold,
@@ -34,22 +34,10 @@ export function CouponsLeft({
   if (!s) return null;
   return (
     <div className={`min-w-0 ${className}`}>
-      <div className="flex items-center gap-2 text-[13.5px] leading-none">
-        {s.soldOut ? (
-          <span className="font-semibold text-ink-soft">Sold out</span>
-        ) : (
-          <span className={`font-semibold ${s.sellingOut ? "text-orange" : "text-ink-soft"}`}>
-            {s.left} left
-          </span>
-        )}
-        {s.sellingOut ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-orange px-2 py-[3px] text-[11.5px] font-bold text-black">
-            <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-black" aria-hidden />
-            Selling out
-          </span>
-        ) : null}
-      </div>
-      <Meter value={s.left} max={s.total} hot={s.sellingOut} className="mt-2 w-24" />
+      <p className="text-[11px] font-semibold leading-none text-ink-soft">
+        {s.soldOut ? "Sold out" : `${s.left} left`}
+      </p>
+      <Meter value={s.left} max={s.total} className="mt-2 w-24" />
     </div>
   );
 }
@@ -69,7 +57,7 @@ export function Countdown({ deadline, now }: { deadline: number; now: number | n
   const urgent = left < 3600;
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[13.5px] font-semibold tabular-nums ${urgent ? "text-orange" : "text-ink-soft"}`}
+      className={`inline-flex items-center gap-1 text-[12px] font-semibold tabular-nums ${urgent ? "text-orange" : "text-ink-soft"}`}
       title="Until sales close"
     >
       <IconClock size={15} />
@@ -113,18 +101,18 @@ export function PromoCard({
           <Seal seed={p.promoPda ?? p.id} size={compact ? 48 : 54} label={cost} />
           <div className="min-w-0 flex-1 pt-0.5">
             <h3
-              className={`font-title line-clamp-2 leading-tight ${compact ? "text-[19px]" : "text-[21px]"}`}
+              className={`font-title line-clamp-2 leading-tight ${compact ? "text-[17px]" : "text-[18.5px]"}`}
             >
               {p.itemName}
             </h3>
-            <p className="truncate text-[14px] text-ink-soft">
+            <p className="truncate text-[12.5px] text-ink-soft">
               {sub === "kickoff" ? closesText(p.depositDeadline, now) : p.shop.name}
             </p>
           </div>
-          <Odds pct={odds} size={compact ? 22 : 26} label="chance" className="shrink-0" />
+          <Odds pct={odds} size={compact ? 20 : 23} label="chance" className="shrink-0" />
         </div>
         <p
-          className={`font-wide mt-3 font-bold leading-snug ${compact ? "text-[16px]" : "text-[18px]"}`}
+          className={`font-wide mt-3 font-bold leading-snug ${compact ? "text-[14px]" : "text-[16px]"}`}
         >
           {st.kind === "won" ? (
             <span className="text-ribbon">{stateText(st, cond)}</span>
@@ -151,13 +139,13 @@ export function PromoCard({
           {(selling || st.kind === "soldout") && couponSupply(p) ? (
             <CouponsLeft p={p} />
           ) : selling ? (
-            <p className="text-[13.5px] font-semibold text-ink-soft">
+            <p className="text-[12px] font-semibold text-ink-soft">
               {closesText(p.depositDeadline, now)}
             </p>
           ) : st.kind !== "won" ? (
-            <p className="text-[14px] font-semibold text-ink-soft">{stateText(st, cond)}</p>
+            <p className="text-[12.5px] font-semibold text-ink-soft">{stateText(st, cond)}</p>
           ) : (
-            <p className="text-[14px] text-ink-soft">Paid back right after the game</p>
+            <p className="text-[12.5px] text-ink-soft">Paid back right after the game</p>
           )}
         </div>
         {selling ? (
@@ -167,7 +155,7 @@ export function PromoCard({
             </span>
             <Link
               href={href}
-              className="relative z-10 inline-flex h-10 items-center gap-1.5 rounded-full bg-ink px-4 text-[15px] font-bold text-black transition-transform active:scale-[0.97]"
+              className="relative z-10 inline-flex h-10 items-center gap-1.5 rounded-full bg-ink px-4 text-[13.5px] font-bold text-black transition-transform active:scale-[0.97]"
             >
               Buy {cost}
             </Link>

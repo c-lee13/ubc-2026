@@ -6,9 +6,9 @@ import { ApiError, type PurchaseReceiptDto } from "@/lib/api";
 import { api, chain } from "@/lib/client";
 import { publicConfig } from "@/lib/config";
 import { describe, type Problem } from "@/lib/errors";
-import { conditionText, displayCode, usd } from "@/lib/format";
+import { conditionText, displayCode } from "@/lib/format";
 import { store, useNowSeconds, usePoll, useSeenFor } from "@/lib/hooks";
-import { happened, whenText } from "@/lib/promo-view";
+import { happened, price, whenText } from "@/lib/promo-view";
 import {
   CANCEL_AFTER_SECS,
   PURCHASE_KEY,
@@ -56,7 +56,7 @@ export function ReceiptScreen({
         >
           <IconClose size={22} />
         </Link>
-        <Wordmark size={18} />
+        <Wordmark size={16} />
         <span className="w-10" />
       </header>
       {r ? (
@@ -70,8 +70,8 @@ export function ReceiptScreen({
       ) : waiting ? (
         <div className="mt-6 rounded-[28px] bg-paper-raised px-6 py-14 text-center ring-1 ring-inset ring-rule">
           <Spinner className="mx-auto h-7 w-7 text-note" />
-          <p className="font-title mt-5 text-[22px]">Confirming your payment</p>
-          <p className="mt-1 text-[15px] text-ink-soft">This takes a few seconds.</p>
+          <p className="font-title mt-5 text-[19.5px]">Confirming your payment</p>
+          <p className="mt-1 text-[13.5px] text-ink-soft">This takes a few seconds.</p>
         </div>
       ) : (
         <div className="mt-6">
@@ -103,7 +103,7 @@ function Receipt({
   const now = useNowSeconds();
   const promo = usePoll(() => api.promotion(r.promotion.id), 30_000, [r.promotion.id]);
   const deadline = promo.data?.promotion.depositDeadline ?? null;
-  const cost = usd(r.amount);
+  const cost = price(r.amount);
   const item = r.promotion.itemName;
   const cond = conditionText(r.promotion.outcomeLabel, r.promotion.geminiMarketId);
   const stages = receiptStages(r);
@@ -197,23 +197,21 @@ function Receipt({
         <div
           className={`@container relative overflow-hidden px-6 pb-6 pt-6 ${head.ribbon ? `bg-ribbon text-white ${fresh ? "sweep" : ""}` : "bg-surface-3"}`}
         >
-          <p className="font-display text-[34px]">{head.title}</p>
-          <p className={`mt-2 text-[16px] ${head.ribbon ? "text-white/85" : "text-ink-soft"}`}>
+          <p className="font-display text-[30.5px]">{head.title}</p>
+          <p className={`mt-2 text-[14px] ${head.ribbon ? "text-white/85" : "text-ink-soft"}`}>
             {head.sub}
           </p>
         </div>
 
         {won ? (
           <div className="border-b border-rule px-6 py-7 text-center">
-            <p className="font-num text-ribbon inline-block pb-1 text-[80px]">+{cost}</p>
-            <p className="mt-1 text-[15px] text-ink-soft">
-              back in your balance, for your {item.toLowerCase()} at {r.promotion.shopName}
-            </p>
-            <p className="mt-3 text-[13.5px] text-ink-faint">Order {code}</p>
+            <p className="font-num text-ribbon inline-block pb-1 text-[71px]">+{cost}</p>
+            <p className="mt-1 text-[13.5px] text-ink-soft">back in your balance</p>
+            <p className="mt-3 text-[12px] text-ink-faint">Order {code}</p>
           </div>
         ) : (
           <div className="border-b border-rule px-6 py-6 text-center">
-            <p className="text-[13.5px] font-medium text-ink-soft">
+            <p className="text-[12px] font-medium text-ink-soft">
               {processing
                 ? "Your order code, almost ready"
                 : refunding
@@ -228,7 +226,7 @@ function Receipt({
                 {code}
               </FitText>
             </div>
-            <p className="mt-2 text-[15px] text-ink-soft">
+            <p className="mt-2 text-[13.5px] text-ink-soft">
               {item}, {r.promotion.shopName}
             </p>
           </div>
@@ -252,7 +250,7 @@ function Receipt({
                   >
                     {s.title}
                   </p>
-                  <p className="text-[14px] text-ink-soft">{s.body}</p>
+                  <p className="text-[12.5px] text-ink-soft">{s.body}</p>
                 </div>
               </li>
             ))}
@@ -262,7 +260,7 @@ function Receipt({
       </section>
 
       {r.transactions.deposit && !publicConfig.walletFixture ? (
-        <p className="mt-4 text-center text-[13px] text-ink-faint">
+        <p className="mt-4 text-center text-[11.5px] text-ink-faint">
           <a
             href={chain().explorerTx(r.transactions.deposit)}
             target="_blank"
@@ -276,7 +274,7 @@ function Receipt({
 
       <Link
         href="/"
-        className="mt-5 flex h-[58px] w-full items-center justify-center rounded-[18px] bg-surface-2 text-[17px] font-semibold text-ink ring-1 ring-inset ring-line-strong"
+        className="mt-5 flex h-[58px] w-full items-center justify-center rounded-[18px] bg-surface-2 text-[15px] font-semibold text-ink ring-1 ring-inset ring-line-strong"
       >
         More promos
       </Link>
@@ -304,7 +302,7 @@ function Dot({ state, n }: { state: StageState; n: number }) {
       </span>
     );
   return (
-    <span className="font-title grid h-8 w-8 shrink-0 place-items-center rounded-full text-[14px] text-ink-faint ring-1 ring-inset ring-rule">
+    <span className="font-title grid h-8 w-8 shrink-0 place-items-center rounded-full text-[12.5px] text-ink-faint ring-1 ring-inset ring-rule">
       {n}
     </span>
   );
@@ -384,7 +382,7 @@ function ClaimPanel({
 
   return (
     <div className="space-y-3 border-t border-rule px-6 py-5">
-      <p className="text-[14.5px] text-ink-soft">
+      <p className="text-[13px] text-ink-soft">
         {canCancel
           ? "This payment never locked in. Cancel it and your money comes straight back."
           : auto
@@ -396,7 +394,7 @@ function ClaimPanel({
           {canCancel ? `Cancel and get ${cost} back` : `Get my ${cost} back`}
         </Button>
       ) : (
-        <p className="text-[14px] text-ink-faint">Sign in with the email that paid to do this.</p>
+        <p className="text-[12.5px] text-ink-faint">Sign in with the email that paid to do this.</p>
       )}
       {problem ? (
         <Note tone="error" title={problem.title}>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { describeDeadlineReason, type PromotionDto } from "@/lib/api";
 import { api } from "@/lib/client";
-import { DEFAULT_SELLING_OUT_AT, registerCoupons } from "@/lib/coupons";
+import { DEFAULT_COUPONS, registerCoupons } from "@/lib/coupons";
 import { describe, type Problem } from "@/lib/errors";
 import { clock, dateTime, dollarsToBase, usd, usdExact } from "@/lib/format";
 import { store, useNowSeconds, useOrigin, usePoll } from "@/lib/hooks";
@@ -65,8 +65,7 @@ export function CreatePromo() {
   const [itemName, setItemName] = useState("Latte");
   const [priceText, setPriceText] = useState("5");
   const [maxPct, setMaxPct] = useState(DEFAULT_MAX_PCT);
-  const [coupons, setCoupons] = useState(25);
-  const [sellingOutAt, setSellingOutAt] = useState(DEFAULT_SELLING_OUT_AT);
+  const [coupons, setCoupons] = useState(DEFAULT_COUPONS);
   const [picked, setPicked] = useState<PickedMarket | null>(null);
   const [deadline, setDeadline] = useState<number | null>(null);
   const [editDeadline, setEditDeadline] = useState(false);
@@ -187,7 +186,7 @@ export function CreatePromo() {
       liveAskMicroUsd: ask,
       costPerSale: perSale?.toString() ?? null,
     },
-    coupons: { total: coupons, sold: 0, sellingOutAt },
+    coupons: { total: coupons, sold: 0 },
   };
 
   async function publish() {
@@ -220,7 +219,7 @@ export function CreatePromo() {
         hedgeBudget,
       });
       const id = created.promotion.id;
-      registerCoupons(id, coupons, sellingOutAt);
+      registerCoupons(id, coupons);
       const n = NEIGHBORHOODS.find((x) => x.name === hood);
       if (n) rememberShopPlace(shop.address, placeIn(n, shop.address));
       const local: LocalDraft = { promotionId: id, init: created.initializePromo };
@@ -256,8 +255,8 @@ export function CreatePromo() {
           <span className="mx-auto grid h-16 w-16 animate-pop place-items-center rounded-full bg-ribbon text-white">
             <IconCheck size={32} />
           </span>
-          <h1 className="font-display mt-5 text-[34px]">It&apos;s live.</h1>
-          <p className="mt-2 text-[16px] text-ink-soft">
+          <h1 className="font-display mt-5 text-[30.5px]">It&apos;s live.</h1>
+          <p className="mt-2 text-[14px] text-ink-soft">
             {itemName}, free if {outcomeLabel}.
           </p>
           <div className="mx-auto mt-6 w-[220px] overflow-hidden rounded-[22px] bg-white p-3">
@@ -267,17 +266,17 @@ export function CreatePromo() {
               <div className="aspect-square" />
             )}
           </div>
-          <p className="font-title mt-3 text-[17px]">Scan to buy</p>
+          <p className="font-title mt-3 text-[15px]">Scan to buy</p>
           <div className="mt-6 space-y-3">
             <Link
               href={`/counter/${published}`}
-              className="flex h-[58px] items-center justify-center rounded-[18px] bg-ink text-[17px] font-semibold text-black"
+              className="flex h-[58px] items-center justify-center rounded-[18px] bg-ink text-[15px] font-semibold text-black"
             >
               Open the counter screen
             </Link>
             <Link
               href="/merchant"
-              className="flex h-[58px] items-center justify-center rounded-[18px] bg-surface-2 text-[17px] font-semibold ring-1 ring-inset ring-line-strong"
+              className="flex h-[58px] items-center justify-center rounded-[18px] bg-surface-2 text-[15px] font-semibold ring-1 ring-inset ring-line-strong"
             >
               Back to workspace
             </Link>
@@ -289,7 +288,7 @@ export function CreatePromo() {
 
   return (
     <Frame>
-      <h1 className="font-display text-[34px]">New promo</h1>
+      <h1 className="font-display text-[30.5px]">New promo</h1>
       <div className="mt-4" inert>
         <PromoCard p={preview} now={now} />
       </div>
@@ -348,12 +347,12 @@ export function CreatePromo() {
         {overMax && game ? (
           <div className="rounded-[18px] bg-surface-2 p-4 ring-1 ring-inset ring-rule">
             {suggestion.loading ? (
-              <p className="flex items-center gap-2 text-[14px] text-ink-soft">
+              <p className="flex items-center gap-2 text-[12.5px] text-ink-soft">
                 <Spinner /> Finding an underdog line
               </p>
             ) : suggestion.data?.suggested ? (
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[14.5px]">
+                <p className="text-[13px]">
                   Underdog line that fits: <strong>{suggestion.data.suggested.label}</strong>,{" "}
                   <span className="text-note">
                     {Math.round(oddsPct(suggestion.data.suggested.bestAskMicroUsd) ?? 0)}%
@@ -380,14 +379,14 @@ export function CreatePromo() {
                 </Button>
               </div>
             ) : (
-              <p className="text-[14px] text-ink-soft">
+              <p className="text-[12.5px] text-ink-soft">
                 No line of this game is under your max right now.
               </p>
             )}
           </div>
         ) : null}
         {deadline ? (
-          <div className="flex items-center justify-between gap-3 text-[14.5px]">
+          <div className="flex items-center justify-between gap-3 text-[13px]">
             <p className="text-ink-soft">
               Sales close{" "}
               <span className="font-semibold text-ink">
@@ -420,14 +419,14 @@ export function CreatePromo() {
       <Section title="Underdog limit" hint="Under 50% keeps it an underdog.">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="text-[13.5px] text-ink-soft">Chance now</p>
-            <p className={`font-num mt-1 text-[40px] ${overMax ? "text-orange" : "text-note"}`}>
+            <p className="text-[12px] text-ink-soft">Chance now</p>
+            <p className={`font-num mt-1 text-[35.5px] ${overMax ? "text-orange" : "text-note"}`}>
               {pct === null ? "–" : `${Math.round(pct)}%`}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[13.5px] text-ink-soft">Max chance</p>
-            <p className="font-num mt-1 text-[40px]">{maxPct}%</p>
+            <p className="text-[12px] text-ink-soft">Max chance</p>
+            <p className="font-num mt-1 text-[35.5px]">{maxPct}%</p>
           </div>
         </div>
         <input
@@ -439,24 +438,24 @@ export function CreatePromo() {
           aria-label="Max odds you will cover"
           className="w-full"
         />
-        <p className="text-[13.5px] text-ink-soft">Sales pause above your max.</p>
+        <p className="text-[12px] text-ink-soft">Sales pause above your max.</p>
       </Section>
 
       <Section title="Coupons">
-        <Stepper label="How many coupons" value={coupons} min={1} max={500} onChange={setCoupons} />
         <Stepper
-          label="“Selling out” at left"
-          value={sellingOutAt}
-          min={1}
-          max={Math.max(1, coupons)}
-          onChange={setSellingOutAt}
+          label="How many coupons"
+          value={coupons}
+          min={10}
+          max={1000}
+          step={10}
+          onChange={setCoupons}
         />
       </Section>
 
       <section className="mt-6 rounded-[24px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
-        <p className="text-[15px] font-semibold text-ink-soft">Cost to cover one sale</p>
-        <p className="font-num mt-1.5 text-[44px]">{perSale === null ? "–" : usd(perSale)}</p>
-        <dl className="mt-3 space-y-1.5 text-[14.5px]">
+        <p className="text-[13.5px] font-semibold text-ink-soft">Cost to cover one sale</p>
+        <p className="font-num mt-1.5 text-[39px]">{perSale === null ? "–" : usd(perSale)}</p>
+        <dl className="mt-3 space-y-1.5 text-[13px]">
           <div className="flex justify-between gap-3">
             <dt className="text-ink-soft">Covering {coupons} coupons</dt>
             <dd className="font-semibold tabular-nums">{budget === null ? "–" : usd(budget)}</dd>
@@ -466,7 +465,7 @@ export function CreatePromo() {
             <dd className="font-semibold tabular-nums">{keep === null ? "–" : usd(keep)}</dd>
           </div>
         </dl>
-        <p className="mt-3 text-[12px] text-ink-faint">
+        <p className="mt-3 text-[11px] text-ink-faint">
           Live price from Gemini. Simulated in this demo.
         </p>
       </section>
@@ -474,7 +473,7 @@ export function CreatePromo() {
       <div className="mt-6 space-y-3">
         {!signedIn ? (
           <div className="rounded-[24px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
-            <p className="font-title mb-3 text-[18px]">
+            <p className="font-title mb-3 text-[16px]">
               Sign in with your shop&apos;s email to publish
             </p>
             <LoginCard />
@@ -485,7 +484,7 @@ export function CreatePromo() {
               {busy && step ? STEP_TEXT[step] : "Publish promo"}
             </Button>
             {errors.length && !busy ? (
-              <p className="text-center text-[14px] text-ink-soft">{errors[0]}</p>
+              <p className="text-center text-[12.5px] text-ink-soft">{errors[0]}</p>
             ) : null}
           </>
         )}
@@ -521,8 +520,8 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   return (
     <section className="mt-8 space-y-3">
       <div>
-        <h2 className="font-title text-[20px]">{title}</h2>
-        {hint ? <p className="text-[14px] text-ink-soft">{hint}</p> : null}
+        <h2 className="font-title text-[18px]">{title}</h2>
+        {hint ? <p className="text-[12.5px] text-ink-soft">{hint}</p> : null}
       </div>
       {children}
     </section>
@@ -532,7 +531,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[13.5px] font-medium text-ink-soft">{label}</span>
+      <span className="mb-1.5 block text-[12px] font-medium text-ink-soft">{label}</span>
       {children}
     </label>
   );
@@ -545,6 +544,7 @@ export function Stepper({
   max,
   onChange,
   suffix,
+  step = 1,
 }: {
   label: string;
   value: number;
@@ -552,16 +552,17 @@ export function Stepper({
   max: number;
   onChange: (v: number) => void;
   suffix?: string;
+  step?: number;
 }) {
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
   return (
     <div className="flex items-center justify-between gap-3 rounded-[18px] bg-surface-2 px-4 py-2.5 ring-1 ring-inset ring-rule">
-      <span className="text-[15px] font-medium">{label}</span>
+      <span className="text-[13.5px] font-medium">{label}</span>
       <div className="flex items-center gap-1">
         <button
           type="button"
           aria-label={`Fewer: ${label}`}
-          onClick={() => onChange(clamp(value - 1))}
+          onClick={() => onChange(clamp(value - step))}
           className="grid h-9 w-9 place-items-center rounded-full bg-surface-3 text-ink hover:bg-line-strong"
         >
           <IconMinus size={16} />
@@ -574,17 +575,17 @@ export function Stepper({
             const n = Number(e.target.value.replace(/\D/g, ""));
             if (Number.isFinite(n)) onChange(clamp(n || min));
           }}
-          className="font-num w-14 bg-transparent text-center text-[22px] text-ink focus:outline-none"
+          className="font-num w-14 bg-transparent text-center text-[19.5px] text-ink focus:outline-none"
         />
         <button
           type="button"
           aria-label={`More: ${label}`}
-          onClick={() => onChange(clamp(value + 1))}
+          onClick={() => onChange(clamp(value + step))}
           className="grid h-9 w-9 place-items-center rounded-full bg-surface-3 text-ink hover:bg-line-strong"
         >
           <IconPlus size={16} />
         </button>
-        {suffix ? <span className="ml-1 text-[14px] text-ink-soft">{suffix}</span> : null}
+        {suffix ? <span className="ml-1 text-[12.5px] text-ink-soft">{suffix}</span> : null}
       </div>
     </div>
   );

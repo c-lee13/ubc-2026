@@ -46,11 +46,11 @@ export function MyPromos() {
 
   return (
     <CustomerShell>
-      <h1 className="font-display pb-5 pt-4 text-[34px]">My promos</h1>
+      <h1 className="font-display pb-5 pt-4 text-[30.5px]">My promos</h1>
       {!ready ? (
         <div className="rounded-[24px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
-          <p className="font-title text-[19px]">Sign in to see your promos</p>
-          <p className="mb-4 mt-1 text-[15px] text-ink-soft">Use the email you paid with.</p>
+          <p className="font-title text-[17px]">Sign in to see your promos</p>
+          <p className="mb-4 mt-1 text-[13.5px] text-ink-soft">Use the email you paid with.</p>
           <LoginCard />
         </div>
       ) : list.data === undefined ? (
@@ -65,8 +65,8 @@ export function MyPromos() {
         )
       ) : server.length === 0 && pending.length === 0 ? (
         <div className="rounded-[24px] bg-paper-raised px-6 py-10 text-center ring-1 ring-inset ring-rule">
-          <p className="font-title text-[20px]">Nothing yet</p>
-          <p className="mt-1.5 text-[15px] text-ink-soft">
+          <p className="font-title text-[18px]">Nothing yet</p>
+          <p className="mt-1.5 text-[13.5px] text-ink-soft">
             Buy a coupon and it shows up here, with your order code.
           </p>
           <Link
@@ -99,7 +99,7 @@ export function MyPromos() {
                       className="flex items-center gap-3.5 rounded-[20px] bg-paper-raised px-4 py-3.5 ring-1 ring-inset ring-rule"
                     >
                       <Spinner className="h-5 w-5 text-note" />
-                      <span className="flex-1 text-[15px] font-semibold">
+                      <span className="flex-1 text-[13.5px] font-semibold">
                         Confirming your payment
                       </span>
                       <IconChevron size={18} className="text-ink-faint" />
@@ -141,8 +141,8 @@ function isFinished(r: CustomerPurchaseDto): boolean {
 function Stat({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
   return (
     <div className="rounded-[22px] bg-paper-raised px-4 py-4 ring-1 ring-inset ring-rule">
-      <p className={`font-num text-[34px] ${accent ? "text-note" : ""}`}>{value}</p>
-      <p className="mt-1.5 text-[13.5px] text-ink-soft">{label}</p>
+      <p className={`font-num text-[30.5px] ${accent ? "text-note" : ""}`}>{value}</p>
+      <p className="mt-1.5 text-[12px] text-ink-soft">{label}</p>
     </div>
   );
 }
@@ -170,17 +170,17 @@ function Row({ r }: { r: CustomerPurchaseDto }) {
       >
         <Seal seed={r.purchasePda} size={46} label={price(r.amount)} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[15.5px] font-semibold">
+          <p className="truncate text-[14px] font-semibold">
             {r.promotion.itemName}{" "}
             <span className="font-normal text-ink-soft">at {r.promotion.shopName}</span>
           </p>
           <p
-            className={`truncate text-[14px] ${s.tone === "win" ? "font-semibold text-note" : s.tone === "live" ? "text-ink" : "text-ink-soft"}`}
+            className={`truncate text-[12.5px] ${s.tone === "win" ? "font-semibold text-note" : s.tone === "live" ? "text-ink" : "text-ink-soft"}`}
           >
             {s.text}
           </p>
         </div>
-        <span className="font-num shrink-0 text-[17px] text-ink-soft">
+        <span className="font-num shrink-0 text-[15px] text-ink-soft">
           {displayCode(r.orderCode, r.purchasePda)}
         </span>
       </Link>

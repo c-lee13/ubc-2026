@@ -9,12 +9,12 @@ import {
   registerCoupons,
   registeredCoupons,
   useCouponRegistry,
-  DEFAULT_SELLING_OUT_AT,
+  DEFAULT_COUPONS,
 } from "@/lib/coupons";
 import { describe, type Problem } from "@/lib/errors";
 import { usd } from "@/lib/format";
 import { useNowSeconds, usePoll, useSeenFor } from "@/lib/hooks";
-import { localDrafts, sumStats, type DashboardPromo, type LocalDraft } from "@/lib/merchant";
+import { localDrafts, type DashboardPromo, type LocalDraft } from "@/lib/merchant";
 import {
   condition,
   happened,
@@ -82,13 +82,13 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
     (p) => p.live?.phase === "RESULT_YES" || p.live?.phase === "RESULT_NO",
   );
   const drafts = promos.filter((p) => p.status === "DRAFT");
-  const totals = sumStats(active);
-  const sales = active.reduce((a, p) => a + BigInt(p.stats.hedgedSales), 0n);
+
+  // Stats from the same rows the list shows: coupons sold (the server's count when it sends one),
+  // sales = those coupons at their price, and how many promos are in the Live tab.
+  const soldOf = (p: DashboardPromo) => couponSupply(p, p.stats.hedged)?.sold ?? p.stats.hedged;
+  const sales = active.reduce((a, p) => a + BigInt(soldOf(p)) * BigInt(p.offerAmount), 0n);
   // The coupon count the cards show (the server's own when it sends one), summed.
-  const couponsSold = active.reduce(
-    (a, p) => a + (couponSupply(p, p.stats.hedged)?.sold ?? p.stats.hedged),
-    0,
-  );
+  const couponsSold = active.reduce((a, p) => a + soldOf(p), 0);
 
   const [local, setLocal] = useState<LocalDraft[]>([]);
   useEffect(() => {
@@ -103,7 +103,7 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
       <header className="sticky top-0 z-30 border-b border-rule/70 bg-paper/80 backdrop-blur-xl">
         <Column className="flex h-[60px] items-center justify-between px-4">
           <Link href="/merchant" className="flex items-center gap-2.5">
-            <Wordmark size={21} />
+            <Wordmark size={19} />
           </Link>
           <ProfileButton balance={false} />
         </Column>
@@ -113,14 +113,14 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
         <Column className="px-4">
           {!shop ? (
             <div className="pt-6">
-              <h1 className="font-display text-[40px] leading-[0.95]">
+              <h1 className="font-display text-[35.5px] leading-[0.95]">
                 Run a promo for your shop.
               </h1>
-              <p className="mt-3 text-[16px] text-ink-soft">
+              <p className="mt-3 text-[14px] text-ink-soft">
                 If the underdog wins, it&apos;s free for your customers. You&apos;re covered.
               </p>
               <div className="mt-6 rounded-[24px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
-                <p className="font-title mb-3 text-[18px]">Sign in with your shop&apos;s email</p>
+                <p className="font-title mb-3 text-[16px]">Sign in with your shop&apos;s email</p>
                 <LoginCard />
               </div>
             </div>
@@ -128,8 +128,10 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
             <>
               <div className="flex items-end justify-between gap-3 pt-4">
                 <div className="min-w-0">
-                  <p className="text-[14px] text-ink-soft">{readOnly ? "Viewing" : "Your shop"}</p>
-                  <h1 className="font-display line-clamp-2 text-[28px] leading-[1.02]">
+                  <p className="text-[12.5px] text-ink-soft">
+                    {readOnly ? "Viewing" : "Your shop"}
+                  </p>
+                  <h1 className="font-display line-clamp-2 text-[25px] leading-[1.02]">
                     {shopName ?? "Workspace"}
                   </h1>
                 </div>
@@ -147,8 +149,8 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
                 <Stat value={String(couponsSold)} label="coupons sold" />
                 <Stat value={compactUsd(sales)} label="in sales" />
                 <Stat
-                  value={String(totals.open)}
-                  label={totals.open === 1 ? "live promo" : "live promos"}
+                  value={String(live.length)}
+                  label={live.length === 1 ? "live promo" : "live promos"}
                   accent
                 />
               </div>
@@ -156,7 +158,7 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
               {canAct ? (
                 <Link
                   href="/merchant/new"
-                  className="mt-5 flex h-[58px] items-center justify-center gap-2 rounded-[18px] bg-ink text-[17px] font-semibold text-black"
+                  className="mt-5 flex h-[58px] items-center justify-center gap-2 rounded-[18px] bg-ink text-[15px] font-semibold text-black"
                 >
                   <IconPlus size={20} /> New promo
                 </Link>
@@ -168,8 +170,8 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
                 </div>
               ) : notFound || (dash.data && promos.length === 0) ? (
                 <div className="mt-6 rounded-[24px] bg-paper-raised px-6 py-10 text-center ring-1 ring-inset ring-rule">
-                  <p className="font-title text-[20px]">No promos yet</p>
-                  <p className="mt-1.5 text-[15px] text-ink-soft">
+                  <p className="font-title text-[18px]">No promos yet</p>
+                  <p className="mt-1.5 text-[13.5px] text-ink-soft">
                     Your first one takes about a minute.
                   </p>
                 </div>
@@ -213,7 +215,7 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
                         role="tab"
                         aria-selected={tab === t}
                         onClick={() => setTab(t)}
-                        className={`h-10 rounded-full text-[14.5px] font-semibold transition-colors ${tab === t ? "bg-ink text-black" : "text-ink-soft hover:text-ink"}`}
+                        className={`h-10 rounded-full text-[13px] font-semibold transition-colors ${tab === t ? "bg-ink text-black" : "text-ink-soft hover:text-ink"}`}
                       >
                         {label}
                       </button>
@@ -222,7 +224,7 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
 
                   <div className="mt-4 space-y-3">
                     {shown.length === 0 ? (
-                      <p className="py-8 text-center text-[15px] text-ink-soft">
+                      <p className="py-8 text-center text-[13.5px] text-ink-soft">
                         {tab === "live" ? "Nothing live right now." : "Finished promos land here."}
                       </p>
                     ) : (
@@ -258,8 +260,8 @@ function compactUsd(base: bigint): string {
 function Stat({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
   return (
     <div className="rounded-[20px] bg-paper-raised px-3.5 py-3.5 ring-1 ring-inset ring-rule">
-      <p className={`font-num truncate text-[28px] ${accent ? "text-note" : ""}`}>{value}</p>
-      <p className="mt-1.5 text-[12.5px] leading-tight text-ink-soft">{label}</p>
+      <p className={`font-num truncate text-[25px] ${accent ? "text-note" : ""}`}>{value}</p>
+      <p className="mt-1.5 text-[11px] leading-tight text-ink-soft">{label}</p>
     </div>
   );
 }
@@ -326,10 +328,10 @@ function PromoRow({
       <div className="flex items-start gap-3.5">
         <Seal seed={p.promoPda ?? p.id} size={50} label={price(p.offerAmount)} />
         <div className="min-w-0 flex-1">
-          <p className="font-title truncate text-[19px]">{p.itemName}</p>
-          <p className="truncate text-[14px] text-ink-soft">Free if {condition(p)}</p>
+          <p className="font-title truncate text-[17px]">{p.itemName}</p>
+          <p className="truncate text-[12.5px] text-ink-soft">Free if {condition(p)}</p>
           <p
-            className={`mt-1 text-[13.5px] font-semibold ${s.tone === "live" ? "text-note" : s.tone === "warn" ? "text-orange" : s.tone === "win" ? "text-ink" : "text-ink-soft"}`}
+            className={`mt-1 text-[12px] font-semibold ${s.tone === "live" ? "text-note" : s.tone === "warn" ? "text-orange" : s.tone === "win" ? "text-ink" : "text-ink-soft"}`}
           >
             {s.tone === "live" ? (
               <span
@@ -342,10 +344,10 @@ function PromoRow({
         </div>
         {selling ? (
           <div className="shrink-0 text-right">
-            <p className="font-num text-[26px] text-note">
+            <p className="font-num text-[23px] text-note">
               {odds === null ? "–" : `${Math.round(odds)}%`}
             </p>
-            <p className="text-[11.5px] text-ink-faint">
+            <p className="text-[11px] text-ink-faint">
               {max !== null ? `max ${Math.round(max)}%` : "chance"}
             </p>
           </div>
@@ -354,27 +356,17 @@ function PromoRow({
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[13.5px] text-ink-soft">
+          <p className="text-[12px] text-ink-soft">
             <span className="font-semibold text-ink">{supply?.sold ?? p.stats.hedged}</span>
             {supply ? ` of ${supply.total} sold` : " sold"}
-            {supply && selling && supply.sellingOut ? (
-              <span className="font-semibold text-orange">, selling out</span>
-            ) : null}
           </p>
-          {supply ? (
-            <Meter
-              value={supply.sold}
-              max={supply.total}
-              hot={supply.sellingOut}
-              className="mt-2 max-w-[160px]"
-            />
-          ) : null}
+          {supply ? <Meter value={supply.sold} max={supply.total} className="mt-2 w-24" /> : null}
         </div>
         <div className="flex shrink-0 gap-2">
           {p.live?.phase !== "RESULT_YES" && p.live?.phase !== "RESULT_NO" ? (
             <Link
               href={`/counter/${p.id}`}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-3 px-3.5 text-[14px] font-semibold ring-1 ring-inset ring-line-strong"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-3 px-3.5 text-[12.5px] font-semibold ring-1 ring-inset ring-line-strong"
             >
               <IconQr size={16} /> Counter
             </Link>
@@ -383,7 +375,7 @@ function PromoRow({
             <button
               type="button"
               onClick={onEdit}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-3 px-3.5 text-[14px] font-semibold ring-1 ring-inset ring-line-strong"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-3 px-3.5 text-[12.5px] font-semibold ring-1 ring-inset ring-line-strong"
             >
               <IconEdit size={15} /> Edit
             </button>
@@ -451,21 +443,16 @@ function Collect({ promo }: { promo: DashboardPromo }) {
 }
 
 /**
- * Edit a live promo. The coupon count and the selling-out threshold are this app's own (kept in
- * this browser until the API stores them); item, price, game and max odds are fixed on Arc once
- * the promo is live.
+ * Edit a live promo. The coupon count is this app's own (kept in this browser until the API
+ * stores it); item, price, game and max odds are fixed on Arc once the promo is live.
  */
 function EditSheet({ promo, onClose }: { promo: DashboardPromo | null; onClose: () => void }) {
-  const [total, setTotal] = useState(25);
-  const [at, setAt] = useState(DEFAULT_SELLING_OUT_AT);
+  const [total, setTotal] = useState(DEFAULT_COUPONS);
   useEffect(() => {
     if (!promo) return;
     const reg = registeredCoupons(promo.id);
-    const server = (
-      promo as DashboardPromo & { coupons?: { total: number; sellingOutAt?: number } | null }
-    ).coupons;
-    setTotal(reg?.total ?? server?.total ?? Math.max(25, promo.stats.hedged + 10));
-    setAt(reg?.sellingOutAt ?? server?.sellingOutAt ?? DEFAULT_SELLING_OUT_AT);
+    const server = (promo as DashboardPromo & { coupons?: { total: number } | null }).coupons;
+    setTotal(reg?.total ?? server?.total ?? Math.max(DEFAULT_COUPONS, promo.stats.hedged + 10));
   }, [promo]);
   if (!promo) return null;
   const max =
@@ -482,15 +469,8 @@ function EditSheet({ promo, onClose }: { promo: DashboardPromo | null; onClose: 
           value={total}
           min={Math.max(1, promo.stats.hedged)}
           max={1000}
+          step={10}
           onChange={setTotal}
-        />
-        <Stepper
-          label="“Selling out” at"
-          value={at}
-          min={1}
-          max={Math.max(1, total)}
-          onChange={setAt}
-          suffix="left"
         />
         <ul className="divide-y divide-rule rounded-[18px] bg-paper ring-1 ring-inset ring-rule">
           {[
@@ -498,18 +478,18 @@ function EditSheet({ promo, onClose }: { promo: DashboardPromo | null; onClose: 
             ["Free if", condition(promo)],
             ["Max chance", max],
           ].map(([k, v]) => (
-            <li key={k} className="flex items-center gap-3 px-4 py-3 text-[14.5px]">
+            <li key={k} className="flex items-center gap-3 px-4 py-3 text-[13px]">
               <IconLock size={16} className="shrink-0 text-ink-faint" />
               <span className="text-ink-soft">{k}</span>
               <span className="ml-auto truncate font-semibold">{v}</span>
             </li>
           ))}
         </ul>
-        <p className="text-[13px] text-ink-faint">Locked while live.</p>
+        <p className="text-[11.5px] text-ink-faint">Locked while live.</p>
         <Button
           size="lg"
           onClick={() => {
-            registerCoupons(promo.id, total, at);
+            registerCoupons(promo.id, total);
             onClose();
           }}
         >

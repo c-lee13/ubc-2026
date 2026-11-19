@@ -89,16 +89,16 @@ export function SavedDraftCard({
       <div className="flex items-center gap-3.5">
         <Seal seed={draft.id} size={48} label={price(draft.offerAmount)} />
         <div className="min-w-0 flex-1">
-          <p className="font-title truncate text-[18px]">{draft.itemName}</p>
-          <p className="truncate text-[14px] text-ink-soft">
+          <p className="font-title truncate text-[16px]">{draft.itemName}</p>
+          <p className="truncate text-[12.5px] text-ink-soft">
             Free if {conditionText(draft.outcomeLabel, draft.geminiMarketId)}
           </p>
         </div>
-        <span className="rounded-full bg-surface-3 px-2.5 py-1 text-[12px] font-semibold text-ink-soft">
+        <span className="rounded-full bg-surface-3 px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
           Draft
         </span>
       </div>
-      <p className="mt-3 text-[13.5px] text-ink-soft">
+      <p className="mt-3 text-[12px] text-ink-soft">
         {expired
           ? "Sales would already be closed, so this draft can't go live."
           : `Not live yet. Sales would close ${dateTime(draft.depositDeadline)}.`}

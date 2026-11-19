@@ -101,16 +101,16 @@ export function Voucher(props: VoucherProps) {
               <span
                 className={`font-display leading-none tracking-[-0.04em] ${
                   dollars.length <= 2
-                    ? "text-[12.5cqw] @min-[420px]:text-[6.6cqw]"
+                    ? "text-[11.5cqw] @min-[420px]:text-[6.07cqw]"
                     : dollars.length === 3
-                      ? "text-[10.4cqw] @min-[420px]:text-[5.5cqw]"
-                      : "text-[8cqw] @min-[420px]:text-[4.2cqw]"
+                      ? "text-[9.57cqw] @min-[420px]:text-[5.06cqw]"
+                      : "text-[7.36cqw] @min-[420px]:text-[3.86cqw]"
                 }`}
               >
                 {dollars}
               </span>
               <span
-                className={`mt-[0.6cqw] font-semibold text-note ${props.plain ? "text-[3.6cqw] @min-[420px]:text-[2.6cqw]" : "text-[3.1cqw] @min-[420px]:text-[1.55cqw]"}`}
+                className={`mt-[0.6cqw] font-semibold text-note ${props.plain ? "text-[3.31cqw] @min-[420px]:text-[2.39cqw]" : "text-[2.85cqw] @min-[420px]:text-[1.43cqw]"}`}
               >
                 back
               </span>
@@ -121,16 +121,16 @@ export function Voucher(props: VoucherProps) {
           <div className="flex min-w-0 flex-col justify-between pt-[3cqw] @min-[420px]:pt-[0.4cqw]">
             <div className="flex items-baseline justify-between gap-[2cqw]">
               {props.plain ? (
-                <span className="font-display truncate text-[9cqw] leading-none @min-[420px]:text-[6.6cqw]">
+                <span className="font-display truncate text-[8.28cqw] leading-none @min-[420px]:text-[6.07cqw]">
                   {props.itemName}
                 </span>
               ) : (
-                <span className="font-wide truncate text-[3.9cqw] font-bold text-ink-soft @min-[420px]:text-[2.05cqw]">
+                <span className="font-wide truncate text-[3.59cqw] font-bold text-ink-soft @min-[420px]:text-[1.89cqw]">
                   {props.shopName}
                 </span>
               )}
               {props.plain ? null : (
-                <span className="shrink-0 font-mono text-[2.7cqw] text-ink-faint @min-[420px]:text-[1.25cqw]">
+                <span className="shrink-0 font-mono text-[2.48cqw] text-ink-faint @min-[420px]:text-[1.15cqw]">
                   {props.sample
                     ? "Sample"
                     : props.serial
@@ -140,13 +140,13 @@ export function Voucher(props: VoucherProps) {
               )}
             </div>
             <p
-              className={`my-[2.5cqw] text-balance @min-[420px]:my-0 ${props.plain ? "font-wide text-[6.4cqw] font-bold leading-tight @min-[420px]:text-[4.4cqw]" : "font-display text-[8.4cqw] @min-[420px]:text-[5cqw]"}`}
+              className={`text-balance ${props.plain ? "mb-auto mt-[2.2cqw] @min-[420px]:mt-[1.4cqw] " : "my-[2.5cqw] @min-[420px]:my-0 "}${props.plain ? "font-wide text-[5.89cqw] font-bold leading-tight @min-[420px]:text-[4.05cqw]" : "font-display text-[7.73cqw] @min-[420px]:text-[4.6cqw]"}`}
             >
               {props.headline ?? `Your ${dollars} back if ${props.condition}.`}
             </p>
             <div className="space-y-[1.2cqw]">
               <div
-                className={`flex flex-wrap items-baseline justify-between gap-x-[3cqw] gap-y-[0.5cqw] border-t border-ink/20 pt-[1.6cqw] @min-[420px]:pt-[1.1cqw] ${props.plain ? "text-[3.9cqw] @min-[420px]:text-[2.9cqw]" : "text-[3.6cqw] @min-[420px]:text-[1.7cqw]"}`}
+                className={`flex flex-wrap items-baseline justify-between gap-x-[3cqw] gap-y-[0.5cqw] border-t border-ink/20 pt-[1.6cqw] @min-[420px]:pt-[1.1cqw] ${props.plain ? "text-[3.59cqw] @min-[420px]:text-[2.67cqw]" : "text-[3.31cqw] @min-[420px]:text-[1.56cqw]"}`}
               >
                 <span>{props.terms ?? `Pay ${dollars} for a ${props.itemName.toLowerCase()}`}</span>
                 {props.closesLabel ? (
@@ -156,7 +156,7 @@ export function Voucher(props: VoucherProps) {
               {props.plain ? null : (
                 <div
                   aria-hidden
-                  className="overflow-hidden text-[1.9cqw] leading-none tracking-[0.18em] whitespace-nowrap text-ink-faint/70 @min-[420px]:text-[0.95cqw]"
+                  className="overflow-hidden text-[1.75cqw] leading-none tracking-[0.18em] whitespace-nowrap text-ink-faint/70 @min-[420px]:text-[0.87cqw]"
                 >
                   {micro}
                 </div>
@@ -233,7 +233,7 @@ export function Stamp({ text, tone }: { text: string; tone: StampTone }) {
       style={{ transform: "rotate(var(--stamp-rot))" }}
     >
       <div className="rounded-[0.8cqw] border-[0.3cqw] border-current px-[2cqw] py-[0.7cqw] @min-[420px]:border-[0.18cqw] @min-[420px]:px-[1.4cqw] @min-[420px]:py-[0.4cqw]">
-        <span className="font-display block text-[5.2cqw] leading-none tracking-[0.04em] opacity-90 @min-[420px]:text-[3.2cqw]">
+        <span className="font-display block text-[4.78cqw] leading-none tracking-[0.04em] opacity-90 @min-[420px]:text-[2.94cqw]">
           {text}
         </span>
       </div>
@@ -277,7 +277,11 @@ export function Seal({ seed, size = 44, label }: { seed: string; size?: number; 
       {label ? (
         <span
           className="font-display relative leading-none tracking-[-0.03em]"
-          style={{ fontSize: Math.round(size * (label.length > 3 ? 0.19 : 0.25)) }}
+          style={{
+            fontSize: Math.round(
+              size * (label.length > 4 ? 0.165 : label.length > 3 ? 0.19 : 0.25),
+            ),
+          }}
         >
           {label}
         </span>
