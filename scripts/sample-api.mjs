@@ -46,7 +46,7 @@ function liveSolWindow(offsetSlots = 0) {
 // Sports markets (Gemini-style instrument symbols). Kickoff = startsAt = latest deposit deadline.
 const KICK_TEX_ARK = Date.UTC(2026, 10, 21, 20, 30) / 1000; // Sat Nov 21, 2:30 PM CT
 const KICK_DAL_PHI = Date.UTC(2026, 10, 23, 1, 20) / 1000; // Sun Nov 22, 7:20 PM CT
-const KICK_SAS_HOU = Date.UTC(2026, 10, 19, 1, 0) / 1000; // tonight 7:00 PM CT
+const KICK_SAS_HOU = Math.floor((Math.floor(Date.now() / 1000) + 2 * 3600 + 1800) / 300) * 300; // tonight, ~2.5 h out
 const KICK_TEX_UK = Date.UTC(2026, 10, 14, 17, 0) / 1000; // last Sat, 11 AM CT (final)
 const tipId = (prefix, t, teams) => {
   const d = new Date(t * 1000);
@@ -60,7 +60,7 @@ const SPORTS = [
     outcomeLabel: "Texas wins",
     category: "Sports",
     startsAt: KICK_TEX_ARK,
-    ask: 640000,
+    ask: 360000,
   },
   {
     marketId: "GEMI-NCAAF-2611212030-ARK-TEX-M-ARK",
@@ -69,7 +69,7 @@ const SPORTS = [
     outcomeLabel: "Arkansas wins",
     category: "Sports",
     startsAt: KICK_TEX_ARK,
-    ask: 380000,
+    ask: 660000,
   },
   {
     marketId: "GEMI-NCAAF-2611212030-ARK-TEX-S-TEX-10.5",
@@ -78,7 +78,7 @@ const SPORTS = [
     outcomeLabel: "Texas wins by more than 10.5 points",
     category: "Sports",
     startsAt: KICK_TEX_ARK,
-    ask: 470000,
+    ask: 180000,
   },
   {
     marketId: "GEMI-NFL-2611230120-PHI-DAL-M-DAL",
@@ -87,7 +87,7 @@ const SPORTS = [
     outcomeLabel: "Cowboys win",
     category: "Sports",
     startsAt: KICK_DAL_PHI,
-    ask: 560000,
+    ask: 440000,
   },
   {
     marketId: "GEMI-NFL-2611230120-PHI-DAL-M-PHI",
@@ -96,7 +96,7 @@ const SPORTS = [
     outcomeLabel: "Eagles win",
     category: "Sports",
     startsAt: KICK_DAL_PHI,
-    ask: 460000,
+    ask: 580000,
   },
   {
     marketId: `${tipId("NBA", KICK_SAS_HOU, "HOU-SAS")}-M-SAS`,
@@ -105,7 +105,7 @@ const SPORTS = [
     outcomeLabel: "Spurs win",
     category: "Sports",
     startsAt: KICK_SAS_HOU,
-    ask: 510000,
+    ask: 410000,
   },
   {
     marketId: "GEMI-NCAAF-2611141700-UK-TEX-M-TEX",
@@ -114,7 +114,7 @@ const SPORTS = [
     outcomeLabel: "Texas wins",
     category: "Sports",
     startsAt: KICK_TEX_UK,
-    ask: 780000,
+    ask: 380000,
   },
 ];
 const sportById = new Map(SPORTS.map((m) => [m.marketId, m]));
@@ -139,7 +139,7 @@ function outcomeOf(marketId) {
 function askOf(marketId) {
   const s = sportById.get(marketId);
   if (s) return s.ask;
-  if (solClose(marketId)) return 470000 + (parseInt(sha(marketId).slice(0, 4), 16) % 5) * 10000; // 47-51¢
+  if (solClose(marketId)) return 380000 + (parseInt(sha(marketId).slice(0, 4), 16) % 5) * 20000; // 38-46¢
   return 550000;
 }
 
@@ -174,14 +174,18 @@ const SHOPS = {
 /* ---------- promos ---------- */
 // market: a sports market id, "SOL_LIVE[:slot]" (rolling live window), or a fixed past SOL id.
 const PROMOS = [
+  // coupons: the shop's coupon count (proposed API field), soldBefore: sales before this sample's
+  // purchase list, sellingOutAt: when cards say "Selling out". Every cap is the default 49¢.
   {
     key: "barton-latte-texas",
     shop: "barton",
     itemName: "Latte",
     offer: 5,
     market: "GEMI-NCAAF-2611212030-ARK-TEX-M-TEX",
-    cap: 0.7,
+    cap: 0.49,
     budget: 120,
+    coupons: 40,
+    soldBefore: 18,
   },
   {
     key: "barton-coldbrew-sol",
@@ -189,9 +193,11 @@ const PROMOS = [
     itemName: "Cold brew",
     offer: 4.5,
     market: "SOL_LIVE:0",
-    cap: 0.55,
+    cap: 0.49,
     budget: 40,
-    outcomeLabel: "Up",
+    outcomeLabel: "SOL closes up",
+    coupons: 25,
+    soldBefore: 6,
   },
   {
     key: "barton-cortado-sol",
@@ -199,9 +205,11 @@ const PROMOS = [
     itemName: "Cortado",
     offer: 4.5,
     market: "SOL_WAIT",
-    cap: 0.55,
+    cap: 0.49,
     budget: 30,
-    outcomeLabel: "Up",
+    outcomeLabel: "SOL closes up",
+    coupons: 20,
+    soldBefore: 9,
   },
   {
     key: "barton-latte-kentucky",
@@ -209,8 +217,10 @@ const PROMOS = [
     itemName: "Latte",
     offer: 5,
     market: "GEMI-NCAAF-2611141700-UK-TEX-M-TEX",
-    cap: 0.85,
+    cap: 0.49,
     budget: 80,
+    coupons: 40,
+    soldBefore: 31,
   },
   {
     key: "barton-mocha-sol",
@@ -218,9 +228,11 @@ const PROMOS = [
     itemName: "Mocha",
     offer: 5.5,
     market: SOL_NO,
-    cap: 0.55,
+    cap: 0.49,
     budget: 30,
-    outcomeLabel: "Up",
+    outcomeLabel: "SOL closes up",
+    coupons: 20,
+    soldBefore: 12,
   },
   {
     key: "lomita-plate-texas",
@@ -228,8 +240,10 @@ const PROMOS = [
     itemName: "Taco plate",
     offer: 9,
     market: "GEMI-NCAAF-2611212030-ARK-TEX-M-TEX",
-    cap: 0.7,
+    cap: 0.49,
     budget: 150,
+    coupons: 30,
+    soldBefore: 23,
   },
   {
     key: "lomita-breakfast-sol",
@@ -237,9 +251,11 @@ const PROMOS = [
     itemName: "Breakfast taco",
     offer: 3.75,
     market: "SOL_LIVE:1",
-    cap: 0.55,
+    cap: 0.49,
     budget: 25,
-    outcomeLabel: "Up",
+    outcomeLabel: "SOL closes up",
+    coupons: 20,
+    soldBefore: 3,
   },
   {
     key: "spur-pint-cowboys",
@@ -247,8 +263,33 @@ const PROMOS = [
     itemName: "Pint of Lone Star",
     offer: 7,
     market: "GEMI-NFL-2611230120-PHI-DAL-M-DAL",
-    cap: 0.55,
+    cap: 0.49,
     budget: 100,
+    coupons: 50,
+    soldBefore: 14,
+  },
+  {
+    key: "spur-marg-texas-cover",
+    shop: "spur",
+    itemName: "Frozen margarita",
+    offer: 10,
+    market: "GEMI-NCAAF-2611212030-ARK-TEX-S-TEX-10.5",
+    cap: 0.49,
+    budget: 60,
+    coupons: 30,
+    soldBefore: 5,
+  },
+  {
+    key: "bluebonnet-kolache-spurs",
+    shop: "bluebonnet",
+    itemName: "Kolache box",
+    offer: 12,
+    market: `${tipId("NBA", KICK_SAS_HOU, "HOU-SAS")}-M-SAS`,
+    cap: 0.49,
+    budget: 60,
+    coupons: 12,
+    soldBefore: 9,
+    sellingOutAt: 4,
   },
   {
     key: "bluebonnet-kolache-sol",
@@ -256,9 +297,11 @@ const PROMOS = [
     itemName: "Kolache box",
     offer: 12,
     market: SOL_YES,
-    cap: 0.55,
+    cap: 0.49,
     budget: 60,
-    outcomeLabel: "Up",
+    outcomeLabel: "SOL closes up",
+    coupons: 15,
+    soldBefore: 10,
   },
 ].map((p) => {
   const nonce = BigInt(`0x${sha(`nonce:${p.key}`).slice(0, 14)}`);
@@ -275,6 +318,9 @@ const PROMOS = [
     outcomeLabelFixed: p.outcomeLabel ?? null,
     maxYesPriceMicroUsd: String(Math.round(p.cap * 1e6)),
     hedgeBudget: USD(p.budget),
+    coupons: p.coupons ?? null,
+    soldBefore: p.soldBefore ?? 0,
+    sellingOutAt: p.sellingOutAt ?? 5,
     createdAt: T0 - 86400,
   };
 });
@@ -465,6 +511,20 @@ function promoDto(p, owner = false) {
     depositDeadline: deadline,
     onChainState: resolved === "YES" ? "ResolvedYes" : resolved === "NO" ? "ResolvedNo" : "Active",
     live: p.status === "ACTIVE" ? liveState(p, owner) : null,
+    // PROPOSED field (not in apps/api yet): the shop's coupon count and how many are sold.
+    coupons: p.coupons
+      ? {
+          total: p.coupons,
+          sold: Math.min(
+            p.coupons,
+            (p.soldBefore ?? 0) +
+              PURCHASES.filter(
+                (x) => x.promotionId === p.id && !x.cancelTx && x.hedge?.status !== "FAILED",
+              ).length,
+          ),
+          sellingOutAt: p.sellingOutAt ?? 5,
+        }
+      : null,
   };
   if (owner)
     Object.assign(dto, { maxYesPriceMicroUsd: p.maxYesPriceMicroUsd, hedgeBudget: p.hedgeBudget });
@@ -911,7 +971,7 @@ const server = http.createServer(async (req, res) => {
         market: b.geminiMarketId,
         depositDeadline: Number(b.depositDeadline),
         outcomeLabelFixed: b.outcomeLabel ?? null,
-        maxYesPriceMicroUsd: String(b.maxYesPriceMicroUsd ?? "550000"),
+        maxYesPriceMicroUsd: String(b.maxYesPriceMicroUsd ?? "490000"),
         hedgeBudget: String(b.hedgeBudget ?? "25000000"),
         createdAt: now(),
       };

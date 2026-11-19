@@ -79,6 +79,11 @@ interface FxPromo {
   initialized: boolean;
   resolvedOutcome: "YES" | "NO" | null;
   resolvedAt: number | null;
+  /**
+   * A promo of the API / sample server, copied here when someone pays for it in fixture mode so
+   * the stand-in wallet can buy it. The server stays the source of truth for showing it.
+   */
+  imported?: boolean;
 }
 interface FxPurchase {
   key: string;
@@ -593,7 +598,7 @@ export function createFixtureTransport(real: Transport): Transport {
         outcomeLabel: "SOL closes up",
         geminiMarketId: w.marketId,
         depositDeadline: w.recommendedDepositDeadline,
-        maxYesPriceMicroUsd: "550000",
+        maxYesPriceMicroUsd: "490000",
         hedgeBudget: "25000000",
         reservedPremium: "0",
         initialized: true,
@@ -674,28 +679,51 @@ export function createFixtureTransport(real: Transport): Transport {
       }
       if (path === "/api/wallet/faucet") {
         if (body.walletId !== w.id) return json(404, { error: "wallet_not_found" });
-        if (w.lastDrip && Date.now() - w.lastDrip < 86_400_000) {
-          return json(502, {
-            error: "faucet_unavailable",
-            message: "Fixture: one drip per wallet per day",
-            fallback: "https://faucet.circle.com (Arc Testnet)",
-          });
-        }
-        w.balance = (BigInt(w.balance) + DRIP).toString();
+        // The redesign's Add money sends the picked amount; the fixture adds exactly that
+        // (capped at $200). The real API ignores it and Circle drips its own fixed amount.
+        const asked =
+          typeof body.amount === "string" && /^\d{1,12}$/.test(body.amount)
+            ? BigInt(body.amount)
+            : null;
+        const add = asked && asked > 0n && asked <= 200_000_000n ? asked : DRIP;
+        w.balance = (BigInt(w.balance) + add).toString();
         w.lastDrip = Date.now();
         return done(200, { ok: true, address: w.address, testnet: true });
       }
       const m = /^\/api\/checkout\/([^/]+)\/(status|approve|deposit|sign|submit)$/.exec(path);
       if (m) {
-        const promo = s.promos.find((p) => p.id === decodeURIComponent(m[1]!));
+        let promo = s.promos.find((p) => p.id === decodeURIComponent(m[1]!));
         if (!promo || promo.status !== "ACTIVE") {
-          // Promos from the API / sample server exist but are not fixture (wallet-payable) promos.
+          // A promo of the API / sample server: copy it in so the stand-in wallet can buy it.
           const r = await real(`${base}/api/promotions/${m[1]}`, { cache: "no-store" }).catch(
             () => null,
           );
-          return r && r.ok
-            ? json(409, { error: "not_an_arc_promotion" })
-            : json(404, { error: "promotion_not_found" });
+          if (!r || !r.ok) return json(404, { error: "promotion_not_found" });
+          const { promotion: dto } = (await r.json()) as { promotion: PromotionDto };
+          if (dto.status !== "ACTIVE" || !dto.promoPda)
+            return json(409, { error: "not_an_arc_promotion" });
+          promo = {
+            id: dto.id,
+            status: "ACTIVE",
+            promoPda: dto.promoPda,
+            promoNonce: "0",
+            merchant: dto.shop.merchant.toLowerCase(),
+            shopName: dto.shop.name,
+            location: dto.shop.location,
+            itemName: dto.itemName,
+            offerAmount: dto.offerAmount,
+            outcomeLabel: dto.outcomeLabel,
+            geminiMarketId: dto.geminiMarketId,
+            depositDeadline: dto.depositDeadline,
+            maxYesPriceMicroUsd: "490000",
+            hedgeBudget: "1000000000",
+            reservedPremium: "0",
+            initialized: true,
+            resolvedOutcome: null,
+            resolvedAt: null,
+            imported: true,
+          };
+          s.promos.push(promo);
         }
         const walletId = m[2] === "status" ? u.searchParams.get("walletId") : body.walletId;
         if (walletId !== w.id) return json(404, { error: "wallet_not_found" });
@@ -932,7 +960,7 @@ export function createFixtureTransport(real: Transport): Transport {
     if (path === "/api/promotions" && method === "GET") {
       await seed(s, base);
       const mine = await Promise.all(
-        s.promos.filter((p) => p.status === "ACTIVE").map((p) => promoDto(p, base)),
+        s.promos.filter((p) => p.status === "ACTIVE" && !p.imported).map((p) => promoDto(p, base)),
       );
       save(s);
       let realList: PromotionDto[] = [];
@@ -949,19 +977,29 @@ export function createFixtureTransport(real: Transport): Transport {
     const one = /^\/api\/promotions\/([^/]+)$/.exec(path);
     if (one) {
       const promo = s.promos.find((p) => p.id === decodeURIComponent(one[1]!));
-      if (promo) return done(200, { promotion: await promoDto(promo, base) });
+      if (promo && !promo.imported) return done(200, { promotion: await promoDto(promo, base) });
     }
     const list = /^\/api\/promotions\/([^/]+)\/purchases$/.exec(path);
     if (list) {
       const promo = s.promos.find((p) => p.id === decodeURIComponent(list[1]!));
       if (promo) {
+        const mine = s.purchases
+          .filter((p) => p.promotionId === promo.id)
+          .map((p) => summary(p, promo));
+        let theirs: PurchaseSummaryDto[] = [];
+        if (promo.imported) {
+          try {
+            const r = await real(url, init);
+            if (r.ok) theirs = ((await r.json()) as { purchases: PurchaseSummaryDto[] }).purchases;
+          } catch {
+            // server down: this browser's purchases only
+          }
+        }
         return done(200, {
           promotionId: promo.id,
-          purchases: s.purchases
-            .filter((p) => p.promotionId === promo.id)
+          purchases: [...mine, ...theirs]
             .sort((a, b) => b.depositedAt - a.depositedAt)
-            .slice(0, 50)
-            .map((p) => summary(p, promo)),
+            .slice(0, 50),
         });
       }
     }
