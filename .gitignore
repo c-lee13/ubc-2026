@@ -23,3 +23,6 @@ programs/**/target/
 coverage/
 *.log
 .vercel/
+
+# Solana private keys
+/relayer.json
