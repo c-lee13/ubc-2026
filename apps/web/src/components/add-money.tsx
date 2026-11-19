@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ApiError } from "@/lib/api";
 import { api } from "@/lib/client";
 import { describe, type Problem } from "@/lib/errors";
 import { usd } from "@/lib/format";
@@ -32,6 +33,9 @@ export function AddMoneySheet({
   const [amount, setAmount] = useState(20);
   const [stage, setStage] = useState<Stage>("amount");
   const [problem, setProblem] = useState<Problem | null>(null);
+  // Circle's testnet faucet limits drips; then the fallback is faucet.circle.com with the address.
+  const [faucetDown, setFaucetDown] = useState(false);
+  const [copied, setCopied] = useState(false);
   const lastTap = useRef(0);
 
   // Reset only when the sheet opens (the balance, and so `need`, changes while it is open).
@@ -65,6 +69,7 @@ export function AddMoneySheet({
       setTimeout(onClose, 1500);
     } catch (err) {
       await minScan;
+      setFaucetDown(err instanceof ApiError && err.code === "faucet_unavailable");
       setProblem(describe(err));
       setStage("error");
     }
@@ -189,8 +194,45 @@ export function AddMoneySheet({
             </div>
           ) : (
             <div className="w-full space-y-3 py-2">
-              <Note tone="error" title={problem?.title ?? "Couldn't add money"}>
-                {problem?.detail}
+              <Note
+                tone="error"
+                title={
+                  faucetDown ? "Top-up limit reached" : (problem?.title ?? "Couldn't add money")
+                }
+              >
+                {faucetDown ? (
+                  <>
+                    The testnet allows a few top-ups a day. Add more at{" "}
+                    <a
+                      href="https://faucet.circle.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-ink underline underline-offset-4"
+                    >
+                      faucet.circle.com
+                    </a>{" "}
+                    (Arc Testnet) with your wallet address.
+                    {w.wallet && typeof navigator !== "undefined" && navigator.clipboard ? (
+                      <button
+                        type="button"
+                        className="mt-2 block font-semibold text-chain"
+                        onClick={() =>
+                          void navigator.clipboard
+                            .writeText(w.wallet!.address)
+                            .then(() => setCopied(true))
+                        }
+                      >
+                        {copied ? "Address copied" : "Copy wallet address"}
+                      </button>
+                    ) : (
+                      <span className="mt-2 block break-all text-[12.5px]">
+                        {w.wallet?.address}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  problem?.detail
+                )}
               </Note>
               <Button size="lg" onClick={() => setStage("pay")}>
                 Try again

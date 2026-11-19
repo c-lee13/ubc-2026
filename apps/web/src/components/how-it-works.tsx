@@ -17,44 +17,47 @@ export function SplitVisual({
   price?: string;
   cond?: string;
 }) {
+  // A row: the price, a fork that splits in two, and what each branch means. Fixed geometry, so
+  // the line ends always meet their labels.
   return (
-    <div className="relative rounded-[22px] bg-paper p-4 ring-1 ring-rule">
-      <svg viewBox="0 0 320 132" className="block w-full" aria-hidden>
+    <div className="flex items-center gap-0 rounded-[22px] bg-paper px-4 py-5 ring-1 ring-rule">
+      <span className="font-num grid h-[60px] w-[60px] shrink-0 place-items-center rounded-full bg-paper-raised text-[21px] ring-1 ring-line-strong">
+        {price}
+      </span>
+      <svg width="84" height="120" viewBox="0 0 84 120" className="shrink-0" aria-hidden>
         <defs>
           <linearGradient id="split-r" x1="0" x2="1">
             <stop offset="0" stopColor="#7a2bff" />
-            <stop offset="0.5" stopColor="#e93fd0" />
+            <stop offset="0.55" stopColor="#e93fd0" />
             <stop offset="1" stopColor="#ff4fb0" />
           </linearGradient>
         </defs>
         <path
-          d="M44 66 H110 C140 66 140 28 170 28 H210"
+          d="M0 60 H22 C44 60 44 18 66 18 H76"
           stroke="#6f6481"
           strokeWidth="3"
           fill="none"
           strokeLinecap="round"
         />
         <path
-          d="M110 66 C140 66 140 104 170 104 H210"
+          d="M22 60 C44 60 44 102 66 102 H76"
           stroke="url(#split-r)"
           strokeWidth="3.5"
           fill="none"
           strokeLinecap="round"
         />
-        <circle cx="34" cy="66" r="26" fill="#15101d" stroke="#3c3149" />
-        <circle cx="216" cy="28" r="6" fill="#a99db9" />
-        <circle cx="216" cy="104" r="7" fill="#ff4fb0" />
+        <circle cx="78" cy="18" r="5" fill="#a99db9" />
+        <circle cx="78" cy="102" r="6" fill="#ff4fb0" />
       </svg>
-      <span className="font-num absolute left-4 top-1/2 w-[60px] -translate-y-1/2 text-center text-[22px]">
-        {price}
-      </span>
-      <div className="absolute right-4 top-[14%] w-[40%] text-[13.5px] leading-tight">
-        <p className="font-semibold text-ink">Your {item}, now</p>
-        <p className="text-ink-3">Yours either way</p>
-      </div>
-      <div className="absolute bottom-[12%] right-4 w-[40%] text-[13.5px] leading-tight">
-        <p className="font-semibold text-note">{price} back</p>
-        <p className="text-ink-2">if {cond}</p>
+      <div className="flex h-[120px] min-w-0 flex-1 flex-col justify-between pl-2 text-[14px] leading-tight">
+        <div className="-mt-1">
+          <p className="font-semibold text-ink">Your {item}, now</p>
+          <p className="text-ink-faint">Yours either way</p>
+        </div>
+        <div className="-mb-1">
+          <p className="font-semibold text-note">{price} back</p>
+          <p className="text-ink-soft">if {cond}</p>
+        </div>
       </div>
     </div>
   );
@@ -63,7 +66,7 @@ export function SplitVisual({
 const STEPS: { title: string; body: string }[] = [
   { title: "Buy it now", body: "Full price, served right away." },
   { title: "Watch the game", body: "Stay, sip, root for the underdog." },
-  { title: "Win and it's free", body: "The money lands back in your balance right after." },
+  { title: "Win and it's free", body: "Your money comes back right after the game." },
 ];
 
 export function HowItWorks({
@@ -92,8 +95,7 @@ export function HowItWorks({
         ))}
       </ol>
       <p className="text-[13.5px] leading-snug text-ink-3">
-        Underdogs only: every promo is under 50%, so you beat the odds when it hits. The shop has it
-        covered, and nothing extra is ever charged.
+        Every promo is an underdog, under 50%. Nothing extra is ever charged.
       </p>
     </div>
   );

@@ -963,11 +963,6 @@ export function createFixtureTransport(real: Transport): Transport {
     await settle(s, base);
 
     if (path === "/api/promotions" && method === "GET") {
-      await seed(s, base);
-      const mine = await Promise.all(
-        s.promos.filter((p) => p.status === "ACTIVE" && !p.imported).map((p) => promoDto(p, base)),
-      );
-      save(s);
       let realList: PromotionDto[] = [];
       try {
         const r = await real(url, init);
@@ -975,6 +970,12 @@ export function createFixtureTransport(real: Transport): Transport {
       } catch {
         // real API down: fixture promos only
       }
+      // Seed a buyable demo promo only when nothing else is selling.
+      if (!realList.some((p) => p.live?.phase === "LIVE")) await seed(s, base);
+      const mine = await Promise.all(
+        s.promos.filter((p) => p.status === "ACTIVE" && !p.imported).map((p) => promoDto(p, base)),
+      );
+      save(s);
       const order = { LIVE: 0, PAUSED: 1, WAITING_FOR_RESULT: 2, RESULT_YES: 3, RESULT_NO: 4 };
       mine.sort((a, b) => order[a.live!.phase] - order[b.live!.phase]);
       return json(200, { promotions: [...mine, ...realList] });
