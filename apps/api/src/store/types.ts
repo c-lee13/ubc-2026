@@ -57,6 +57,8 @@ export interface PromotionRow {
   outcomeLabel: string;
   maxYesPriceMicroUsd: bigint;
   hedgeBudget: bigint;
+  /** How many coupons the shop offers; null = no limit (sales stop only on price or budget). */
+  couponTotal: number | null;
   reservedPremium: bigint;
   resolvedOutcome: "YES" | "NO" | null;
   resolveTxSignature: Base58 | null;
@@ -137,6 +139,7 @@ export class BudgetExceededError extends Error {
 /** status is derived: ACTIVE when promoPda is given (tests/imports), otherwise DRAFT. */
 export type NewPromotion = Omit<
   PromotionRow,
+  | "couponTotal"
   | "id"
   | "status"
   | "reservedPremium"
@@ -144,7 +147,7 @@ export type NewPromotion = Omit<
   | "resolveTxSignature"
   | "onChainState"
   | "createdAt"
->;
+> & { couponTotal?: number | null };
 
 export class PromotionConflictError extends Error {
   constructor(message: string) {

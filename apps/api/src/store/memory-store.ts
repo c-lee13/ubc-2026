@@ -68,6 +68,7 @@ export class MemoryStore implements Store {
   async createPromotion(p: NewPromotion): Promise<PromotionRow> {
     const row: PromotionRow = {
       ...p,
+      couponTotal: p.couponTotal ?? null,
       id: randomUUID(),
       status: p.promoPda ? "ACTIVE" : "DRAFT",
       createdAt: new Date().toISOString(),

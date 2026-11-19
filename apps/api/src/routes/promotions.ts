@@ -3,7 +3,13 @@ import type { SolanaServerGateway } from "@hedged/shared";
 import type { FastifyInstance } from "fastify";
 import type { GeminiAdapter } from "../gemini/adapter";
 import { checkDepositDeadline } from "../promotions/deadline";
-import { liveState, promoStats, publicLiveState, type LiveState } from "../promotions/live-state";
+import {
+  liveState,
+  promoStats,
+  publicLiveState,
+  soldCoupons,
+  type LiveState,
+} from "../promotions/live-state";
 import { PromotionConflictError, type PromotionRow, type Store } from "../store/types";
 import { canonical, isChainId, isWalletAddress, sameChainString } from "../chain-ids";
 import { sendGeminiError } from "./markets";
@@ -67,6 +73,7 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
       outcomeLabel: input.outcomeLabel ?? `${market.eventTitle}: ${market.outcomeLabel}`,
       maxYesPriceMicroUsd: input.maxYesPriceMicroUsd,
       hedgeBudget: input.hedgeBudget,
+      couponTotal: input.coupons,
     });
     return reply.code(201).send({
       promotion: await toDto(promo, null, "owner"),
@@ -170,13 +177,13 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
           : "public";
       const asks = await liveAsks(promos.filter((p) => p.status === "ACTIVE"));
       const promotions = await Promise.all(
-        promos.map(async (p) => ({
-          ...(await toDto(p, asks.get(p.geminiMarketId), audience)),
-          stats: promoStats(
-            await deps.store.listPurchases(p.id),
-            await deps.store.listHedgesByPromotion(p.id),
-          ),
-        })),
+        promos.map(async (p) => {
+          const purchases = await deps.store.listPurchases(p.id);
+          return {
+            ...(await toDto(p, asks.get(p.geminiMarketId), audience, purchases)),
+            stats: promoStats(purchases, await deps.store.listHedgesByPromotion(p.id)),
+          };
+        }),
       );
       return { merchant, viewer: audience, simulatedHedges: true, promotions };
     },
@@ -212,9 +219,16 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
     p: PromotionRow,
     liveAsk: bigint | null | undefined,
     audience: "public" | "owner",
+    /** Already-loaded purchases for this promo; read from the store when needed and not given. */
+    purchases?: Awaited<ReturnType<Store["listPurchases"]>>,
   ) {
+    // Coupon counts are public (the "64 left" on every phone); only read purchases when there is one.
+    const sold =
+      p.couponTotal === null || p.status !== "ACTIVE"
+        ? 0
+        : soldCoupons(purchases ?? (await deps.store.listPurchases(p.id)));
     const live: LiveState | null =
-      p.status === "ACTIVE" ? liveState(p, liveAsk ?? null, nowUnix()) : null;
+      p.status === "ACTIVE" ? liveState(p, liveAsk ?? null, nowUnix(), sold) : null;
     const base = {
       id: p.id,
       status: p.status,
@@ -226,6 +240,7 @@ export function registerPromotionRoutes(app: FastifyInstance, deps: PromotionRou
       geminiMarketId: p.geminiMarketId,
       depositDeadline: p.depositDeadline,
       onChainState: p.onChainState,
+      coupons: p.couponTotal === null ? null : { total: p.couponTotal, sold },
     };
     if (audience === "public") return { ...base, live: live && publicLiveState(live) };
     return {
@@ -248,6 +263,7 @@ interface CreateInput {
   depositDeadline: number;
   maxYesPriceMicroUsd: bigint;
   hedgeBudget: bigint;
+  coupons: number | null;
 }
 
 function parseCreate(
@@ -293,6 +309,18 @@ function parseCreate(
   }
   const hedgeBudget = uint("hedgeBudget");
   if (hedgeBudget === null) return bad("hedgeBudget");
+  // Optional coupon count: a whole number 1-100,000 (a numeric string is accepted too).
+  const rawCoupons =
+    typeof b.coupons === "string" && /^\d{1,6}$/.test(b.coupons) ? Number(b.coupons) : b.coupons;
+  const coupons =
+    rawCoupons === undefined || rawCoupons === null
+      ? null
+      : Number.isInteger(rawCoupons) &&
+          (rawCoupons as number) >= 1 &&
+          (rawCoupons as number) <= 100_000
+        ? (rawCoupons as number)
+        : undefined;
+  if (coupons === undefined) return bad("coupons");
   return {
     value: {
       merchant,
@@ -305,6 +333,7 @@ function parseCreate(
       depositDeadline,
       maxYesPriceMicroUsd,
       hedgeBudget,
+      coupons,
     },
   };
 }
