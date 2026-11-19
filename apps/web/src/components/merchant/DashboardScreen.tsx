@@ -1,23 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { api } from "@/lib/client";
-import { describe } from "@/lib/errors";
-import { shortAddr, usd } from "@/lib/format";
-import { usePoll } from "@/lib/hooks";
+import {
+  couponSupply,
+  registerCoupons,
+  registeredCoupons,
+  useCouponRegistry,
+  DEFAULT_SELLING_OUT_AT,
+} from "@/lib/coupons";
+import { describe, type Problem } from "@/lib/errors";
+import { usd } from "@/lib/format";
+import { useNowSeconds, usePoll, useSeenFor } from "@/lib/hooks";
 import { localDrafts, sumStats, type DashboardPromo, type LocalDraft } from "@/lib/merchant";
+import { condition, happened, oddsPct, price, sellState, shortCountdown } from "@/lib/promo-view";
+import { STUCK_AFTER_SECS } from "@/lib/purchases";
 import { useWallet } from "@/lib/wallet/session";
-import { BTN_PRIMARY, BTN_SECONDARY, DISPLAY, EYEBROW, EYEBROW_RULE, LINK } from "../layout/styles";
+import { IconEdit, IconLock, IconPlus, IconQr } from "../icons";
+import { Button, Meter, Note, Sheet, Spinner } from "../kit";
 import { LoginCard } from "../login-card";
-import { Button, Notice, Spinner } from "../ui";
-import { PromotionRecord } from "./PromotionRecord";
+import { Column, ProfileButton } from "../shell";
+import { Seal } from "../voucher";
+import { Wordmark } from "../kit";
+import { Stepper } from "./CreatePromo";
 import { SavedDraftCard } from "./SavedDraftCard";
 
-// Merchant dashboard, Zahin's layout. Data: GET /api/merchants/:wallet/dashboard for the signed-in
-// shop (owner view through X-User-Token) or the `?merchant=` wallet (public view). Live figures
-// are sums of the dashboard's per-promo stats; hedge costs there are SIMULATED.
+// The merchant workspace: the shop's promos (live and history), new promo, edit, counter.
+// Data: GET /api/merchants/:wallet/dashboard for the signed-in shop (owner view through
+// X-User-Token, so max odds and budget are included). Hedge figures there are SIMULATED.
 
 const PHASE_ORDER: Record<string, number> = {
   LIVE: 0,
@@ -27,34 +39,16 @@ const PHASE_ORDER: Record<string, number> = {
   RESULT_YES: 4,
 };
 
-// Merchant lifecycle. Every stage runs here, on the promo server's routes (docs/FRONTEND-API.md).
-const LIFECYCLE = [
-  {
-    title: "Draft",
-    body: "Pick a Gemini market, set the price, the refund condition and the hedge limits. The promo server checks the deadline against the market and saves a draft.",
-    note: "Promo server",
-  },
-  {
-    title: "Publish",
-    body: "Approve creating the promo in Circle's window with your shop's email wallet. The server reads it back from Arc and turns it on.",
-    note: "Circle approval, on Arc",
-  },
-  {
-    title: "Go live",
-    body: "Customers scan your QR code and pay test USDC by email while the hedge is simulated.",
-    note: "Customers pay by email",
-  },
-  {
-    title: "Pay out",
-    body: "Once the market's official outcome is final, the escrow refunds customers or pays your shop. On escrow v2 this is automatic; the Claims page shows every payment and has a manual fallback.",
-    note: "Automatic on Arc",
-  },
-];
-
 export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
   const w = useWallet();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [refreshKey, setRefreshKey] = useState(0);
-  const mine = w.phase === "ready" ? (w.wallet?.address.toLowerCase() ?? null) : null;
+  const [tab, setTab] = useState<"live" | "history">("live");
+  const [editing, setEditing] = useState<DashboardPromo | null>(null);
+  const now = useNowSeconds();
+  useCouponRegistry();
+  const mine = mounted && w.phase === "ready" ? (w.wallet?.address.toLowerCase() ?? null) : null;
   const readOnly = Boolean(viewAs && viewAs.toLowerCase() !== mine);
   const shop = readOnly ? viewAs : (mine ?? viewAs);
   const canAct = !readOnly && Boolean(mine);
@@ -70,211 +64,443 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
           (PHASE_ORDER[b.live?.phase ?? "RESULT_YES"] ?? 9) ||
         b.depositDeadline - a.depositDeadline,
     );
+  const live = active.filter(
+    (p) =>
+      p.live?.phase === "LIVE" ||
+      p.live?.phase === "PAUSED" ||
+      p.live?.phase === "WAITING_FOR_RESULT",
+  );
+  const history = active.filter(
+    (p) => p.live?.phase === "RESULT_YES" || p.live?.phase === "RESULT_NO",
+  );
   const drafts = promos.filter((p) => p.status === "DRAFT");
   const totals = sumStats(active);
+  const sales = active.reduce((a, p) => a + BigInt(p.stats.hedgedSales), 0n);
 
-  // Unfinished publishes this browser can finish (read after mount: localStorage).
   const [local, setLocal] = useState<LocalDraft[]>([]);
   useEffect(() => {
     if (shop) setLocal(localDrafts(shop));
   }, [shop, dash.data]);
 
-  const figure = (v: string) => (shop && dash.data ? v : shop ? "…" : "Log in to see");
-  const FIGURES: [string, string][] = [
-    ["Total sales", figure(String(totals.purchases))],
-    ["Active promotions", figure(String(totals.open))],
-    ["Simulated hedge costs", figure(usd(totals.premium))],
-  ];
+  const shopName = dash.data?.merchant?.shopName ?? promos[0]?.shop.name ?? null;
+  const shown = tab === "live" ? live : history;
 
   return (
     <>
-      {/* Intro: headline and actions on the left, the live figures on the right */}
-      <section className="mx-auto grid max-w-[1240px] gap-10 px-5 pb-12 pt-8 sm:px-8 lg:grid-cols-12 lg:gap-8 lg:pb-14 lg:pt-12">
-        <div className="lg:col-span-8">
-          <p className={EYEBROW}>
-            <span aria-hidden className={EYEBROW_RULE} />
-            Merchant workspace
-          </p>
-          <h1
-            className={`${DISPLAY} mt-6 text-[clamp(2.7rem,5.4vw,4.4rem)] font-semibold leading-[0.95] tracking-[-0.045em]`}
-          >
-            Make every offer an event.
-          </h1>
-          <p className="mt-6 max-w-[38rem] text-lg leading-relaxed text-[#5A5463]">
-            Create outcome-based refund offers, watch them sell, and collect when the outcome is
-            final. Everything here runs on Arc testnet with test USDC, and hedging is simulated.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link href="/merchant/new" className={BTN_PRIMARY}>
-              Create promotion
-            </Link>
-            <Link href="/merchant/claims" className={BTN_SECONDARY}>
-              View claims
-            </Link>
-          </div>
-        </div>
+      <header className="sticky top-0 z-30 bg-paper/90 backdrop-blur-md">
+        <Column className="flex h-[60px] items-center justify-between px-4">
+          <Link href="/merchant" className="flex items-center gap-2.5">
+            <Wordmark />
+            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[12px] font-semibold text-ink-soft">
+              Shop
+            </span>
+          </Link>
+          <ProfileButton />
+        </Column>
+      </header>
 
-        <section aria-labelledby="figures-heading" className="lg:col-span-4 lg:self-end">
-          <h2 id="figures-heading" className="text-sm font-semibold">
-            Live figures
-          </h2>
-          <dl className="mt-3 divide-y divide-[#E6E1D8] border-y border-[#E6E1D8] text-sm">
-            {FIGURES.map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-4 py-2.5">
-                <dt className="text-[#5A5463]">{label}</dt>
-                <dd className="font-medium tabular-nums">{value}</dd>
+      <main className="pb-16">
+        <Column className="px-4">
+          {!shop ? (
+            <div className="pt-6">
+              <h1 className="font-display text-[40px] leading-[0.95]">
+                Run a promo for your shop.
+              </h1>
+              <p className="mt-3 text-[16px] text-ink-soft">
+                Pick a game, set the price, and your customers get it free if the underdog wins. You
+                never cover the loss.
+              </p>
+              <div className="mt-6 rounded-[24px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
+                <p className="font-title mb-3 text-[18px]">Sign in with your shop&apos;s email</p>
+                <LoginCard />
               </div>
-            ))}
-          </dl>
-          <p className="mt-3 text-xs leading-relaxed text-[#5A5463]">
-            {shop
-              ? "Published promotions only. Hedge costs are simulated from Gemini's live prices; no order is placed."
-              : "Log in as the shop to see your totals."}
-          </p>
-        </section>
-      </section>
-
-      <div aria-hidden className="mx-auto max-w-[1240px] px-5 sm:px-8">
-        <div className="border-t border-[#E6E1D8]" />
-      </div>
-
-      {/* Promotion workspace (primary focus) + lifecycle (secondary) */}
-      <section
-        aria-labelledby="workspace-heading"
-        className="mx-auto grid max-w-[1240px] gap-14 px-5 py-14 sm:px-8 lg:grid-cols-12 lg:gap-10 lg:py-16"
-      >
-        <div className="lg:col-span-8">
-          <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-            <h2
-              id="workspace-heading"
-              className={`${DISPLAY} text-[clamp(2rem,4vw,2.9rem)] font-semibold leading-none tracking-[-0.035em]`}
-            >
-              {readOnly ? "Shop promotions" : "Your promotions"}
-            </h2>
-            <Link href="/merchant/new" className={`text-sm ${LINK}`}>
-              Create promotion
-            </Link>
-          </div>
-          <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-[#5A5463]">
-            {shop ? (
-              <>
-                {!readOnly && w.email ? `${w.email}, wallet ` : "Shop wallet "}
-                <span className="font-mono">{shortAddr(shop, 6)}</span>
-                {readOnly ? ", read-only view." : "."} Live from the promo server and Arc.
-              </>
-            ) : (
-              "Log in with the shop's email to see its promotions. Customers never need to."
-            )}
-          </p>
-
-          <div className="mt-8 border-t-2 border-[#211D28]">
-            {!shop ? (
-              <div className="max-w-xl border-b border-[#E6E1D8] py-8">
-                <LoginCard title="Log in as the shop" />
+            </div>
+          ) : (
+            <>
+              <div className="flex items-end justify-between gap-3 pt-4">
+                <div className="min-w-0">
+                  <p className="text-[14px] text-ink-soft">{readOnly ? "Viewing" : "Your shop"}</p>
+                  <h1 className="font-display line-clamp-2 text-[28px] leading-[1.02]">
+                    {shopName ?? "Workspace"}
+                  </h1>
+                </div>
               </div>
-            ) : !dash.data ? (
-              notFound ? (
-                <Empty>
-                  No promotions yet.{" "}
-                  <Link href="/merchant/new" className={LINK}>
-                    Create your first one
-                  </Link>
-                  .
-                </Empty>
-              ) : dash.error ? (
-                <div className="py-8">
-                  <Notice
-                    tone="error"
-                    title={describe(dash.error).title}
-                    action={
-                      <Button size="sm" variant="secondary" onClick={dash.refresh}>
-                        Retry
-                      </Button>
-                    }
-                  >
+
+              {readOnly ? (
+                <div className="mt-3">
+                  <Note title="Read-only view">
+                    This is another shop&apos;s workspace. Sign in with its email to make changes.
+                  </Note>
+                </div>
+              ) : null}
+
+              <div className="mt-5 grid grid-cols-3 gap-2.5">
+                <Stat value={String(totals.hedged)} label="coupons sold" />
+                <Stat value={usd(sales).replace(/\.00$/, "")} label="in sales" />
+                <Stat
+                  value={String(totals.open)}
+                  label={totals.open === 1 ? "live promo" : "live promos"}
+                  accent
+                />
+              </div>
+
+              {canAct ? (
+                <Link
+                  href="/merchant/new"
+                  className="mt-5 flex h-[58px] items-center justify-center gap-2 rounded-[18px] bg-ink text-[17px] font-semibold text-black"
+                >
+                  <IconPlus size={20} /> New promo
+                </Link>
+              ) : null}
+
+              {dash.data === undefined && !dash.error ? (
+                <div className="grid place-items-center py-16 text-ink-soft">
+                  <Spinner className="h-6 w-6" />
+                </div>
+              ) : notFound || (dash.data && promos.length === 0) ? (
+                <div className="mt-6 rounded-[24px] bg-paper-raised px-6 py-10 text-center ring-1 ring-inset ring-rule">
+                  <p className="font-title text-[20px]">No promos yet</p>
+                  <p className="mt-1.5 text-[15px] text-ink-soft">
+                    Your first one takes about a minute.
+                  </p>
+                </div>
+              ) : dash.error && !dash.data ? (
+                <div className="mt-6">
+                  <Note tone="error" title={describe(dash.error).title}>
                     {describe(dash.error).detail}
-                  </Notice>
+                  </Note>
                 </div>
               ) : (
-                <p className="flex items-center gap-2 border-b border-[#E6E1D8] py-8 text-[#5A5463]">
-                  <Spinner /> Loading promotions…
-                </p>
-              )
-            ) : (
-              <>
-                {dash.error ? (
-                  <div className="py-5">
-                    <Notice tone="warn" title={describe(dash.error).title}>
-                      Showing the last data received. {describe(dash.error).detail}
-                    </Notice>
-                  </div>
-                ) : null}
-                {drafts.map((d) => (
-                  <SavedDraftCard
-                    key={d.id}
-                    merchant={shop}
-                    draft={d}
-                    local={local.find((l) => l.promotionId === d.id) ?? null}
-                    canAct={canAct}
-                    onChange={() => setRefreshKey((k) => k + 1)}
-                  />
-                ))}
-                {active.length === 0 && drafts.length === 0 ? (
-                  <Empty>
-                    No promotions yet.{" "}
-                    <Link href="/merchant/new" className={LINK}>
-                      Create your first one
-                    </Link>
-                    .
-                  </Empty>
-                ) : null}
-                {active.map((p: DashboardPromo) => (
-                  <PromotionRecord key={p.id} promo={p} />
-                ))}
-              </>
-            )}
-          </div>
-        </div>
+                <>
+                  {drafts.length > 0 ? (
+                    <div className="mt-6 space-y-3">
+                      {drafts.map((d) => (
+                        <SavedDraftCard
+                          key={d.id}
+                          merchant={shop}
+                          draft={d}
+                          local={local.find((l) => l.promotionId === d.id) ?? null}
+                          canAct={canAct}
+                          onChange={() => setRefreshKey((k) => k + 1)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
 
-        {/* Secondary: what happens next (a sequence, so it is numbered by a rail of nodes) */}
-        <aside aria-labelledby="next-heading" className="lg:col-span-4 lg:pl-6">
-          <h2
-            id="next-heading"
-            className={`${DISPLAY} text-[1.6rem] font-semibold leading-tight tracking-[-0.03em]`}
-          >
-            What happens next
-          </h2>
-          <p className="mt-2 text-[15px] leading-relaxed text-[#5A5463]">
-            A promotion moves through four stages.
-          </p>
-          <ol className="mt-7">
-            {LIFECYCLE.map((step) => (
-              <li
-                key={step.title}
-                className="relative ml-1 border-l border-[#CFC8BC] pb-8 pl-7 last:border-l-transparent last:pb-0"
-              >
-                <span
-                  aria-hidden
-                  className="absolute -left-[5px] top-[7px] h-[9px] w-[9px] rounded-full bg-[#6133A7]"
-                />
-                <h3 className={`${DISPLAY} text-lg font-semibold leading-snug tracking-[-0.015em]`}>
-                  {step.title}
-                </h3>
-                <p className="mt-1 text-[15px] leading-relaxed text-[#5A5463]">{step.body}</p>
-                <p className="mt-2 text-xs font-semibold text-[#6133A7]">{step.note}</p>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-8 border-t border-[#E6E1D8] pt-4 text-xs leading-relaxed text-[#5A5463]">
-            Publishing is one approval in Circle&apos;s window from the shop&apos;s email wallet.
-            Hedges are simulated from Gemini&apos;s live prices; payments are real test USDC on Arc.
-          </p>
-        </aside>
-      </section>
+                  <div
+                    role="tablist"
+                    aria-label="Promos"
+                    className="mt-6 grid grid-cols-2 gap-1 rounded-full bg-surface-2 p-1 ring-1 ring-inset ring-rule"
+                  >
+                    {(
+                      [
+                        ["live", `Live (${live.length})`],
+                        ["history", `History (${history.length})`],
+                      ] as const
+                    ).map(([t, label]) => (
+                      <button
+                        key={t}
+                        type="button"
+                        role="tab"
+                        aria-selected={tab === t}
+                        onClick={() => setTab(t)}
+                        className={`h-10 rounded-full text-[14.5px] font-semibold transition-colors ${tab === t ? "bg-ink text-black" : "text-ink-soft hover:text-ink"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {shown.length === 0 ? (
+                      <p className="py-8 text-center text-[15px] text-ink-soft">
+                        {tab === "live" ? "Nothing live right now." : "Finished promos land here."}
+                      </p>
+                    ) : (
+                      shown.map((p) => (
+                        <PromoRow
+                          key={p.id}
+                          p={p}
+                          now={now}
+                          canAct={canAct}
+                          onEdit={() => setEditing(p)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </Column>
+      </main>
+
+      <EditSheet promo={editing} onClose={() => setEditing(null)} />
     </>
   );
 }
 
-function Empty({ children }: { children: ReactNode }) {
-  return <p className="border-b border-[#E6E1D8] py-10 text-[15px] text-[#5A5463]">{children}</p>;
+function Stat({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
+  return (
+    <div className="rounded-[20px] bg-paper-raised px-3.5 py-3.5 ring-1 ring-inset ring-rule">
+      <p className={`font-num truncate text-[28px] ${accent ? "text-note" : ""}`}>{value}</p>
+      <p className="mt-1.5 text-[12.5px] leading-tight text-ink-soft">{label}</p>
+    </div>
+  );
+}
+
+function statusLine(
+  p: DashboardPromo,
+  now: number | null,
+): { text: string; tone: "live" | "warn" | "quiet" | "win" } {
+  const st = sellState(p, now);
+  const cond = condition(p);
+  switch (st.kind) {
+    case "selling":
+      return {
+        text: `Selling, ${now !== null ? shortCountdown(p.depositDeadline - now) : ""} left`,
+        tone: "live",
+      };
+    case "soldout":
+      return { text: "Sold out", tone: "warn" };
+    case "paused":
+      return {
+        text:
+          p.live?.pauseReason === "NO_LIVE_PRICE"
+            ? "Paused: no live odds"
+            : "Paused: odds above your max",
+        tone: "warn",
+      };
+    case "closed":
+      return { text: "Sales closed, game on", tone: "quiet" };
+    case "won":
+      return { text: `${happened(cond)}. Customers paid back`, tone: "win" };
+    case "done":
+      return { text: "Over. Sales are yours", tone: "quiet" };
+    default:
+      return { text: "Draft", tone: "quiet" };
+  }
+}
+
+function PromoRow({
+  p,
+  now,
+  canAct,
+  onEdit,
+}: {
+  p: DashboardPromo;
+  now: number | null;
+  canAct: boolean;
+  onEdit: () => void;
+}) {
+  const s = statusLine(p, now);
+  const supply = couponSupply(p, p.stats.hedged);
+  const odds = oddsPct(p.live?.liveAskMicroUsd);
+  const max =
+    p.live?.thresholdBps !== undefined
+      ? p.live.thresholdBps / 100
+      : p.maxYesPriceMicroUsd
+        ? Number(p.maxYesPriceMicroUsd) / 10_000
+        : null;
+  const selling = p.live?.phase === "LIVE" || p.live?.phase === "PAUSED";
+  return (
+    <article className="rounded-[24px] bg-paper-raised p-4 ring-1 ring-inset ring-rule">
+      <div className="flex items-start gap-3.5">
+        <Seal seed={p.promoPda ?? p.id} size={50} label={price(p.offerAmount)} />
+        <div className="min-w-0 flex-1">
+          <p className="font-title truncate text-[19px]">{p.itemName}</p>
+          <p className="truncate text-[14px] text-ink-soft">Free if {condition(p)}</p>
+          <p
+            className={`mt-1 text-[13.5px] font-semibold ${s.tone === "live" ? "text-note" : s.tone === "warn" ? "text-orange" : s.tone === "win" ? "text-ink" : "text-ink-soft"}`}
+          >
+            {s.tone === "live" ? (
+              <span
+                className="mr-1.5 inline-block h-2 w-2 animate-pulse-dot rounded-full bg-note align-middle"
+                aria-hidden
+              />
+            ) : null}
+            {s.text}
+          </p>
+        </div>
+        {selling ? (
+          <div className="shrink-0 text-right">
+            <p className="font-num text-[26px] text-note">
+              {odds === null ? "–" : `${Math.round(odds)}%`}
+            </p>
+            <p className="text-[11.5px] text-ink-faint">
+              {max !== null ? `max ${Math.round(max)}%` : "chance"}
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13.5px] text-ink-soft">
+            <span className="font-semibold text-ink">{p.stats.hedged}</span>
+            {supply ? ` of ${supply.total} sold` : " sold"}
+            {supply && selling && supply.sellingOut ? (
+              <span className="font-semibold text-orange">, selling out</span>
+            ) : null}
+          </p>
+          {supply ? (
+            <Meter
+              value={supply.sold}
+              max={supply.total}
+              hot={supply.sellingOut}
+              className="mt-2 max-w-[160px]"
+            />
+          ) : null}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          {p.live?.phase !== "RESULT_YES" && p.live?.phase !== "RESULT_NO" ? (
+            <Link
+              href={`/counter/${p.id}`}
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-3 px-3.5 text-[14px] font-semibold ring-1 ring-inset ring-line-strong"
+            >
+              <IconQr size={16} /> Counter
+            </Link>
+          ) : null}
+          {canAct ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-3 px-3.5 text-[14px] font-semibold ring-1 ring-inset ring-line-strong"
+            >
+              <IconEdit size={15} /> Edit
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {p.live?.phase === "RESULT_NO" && canAct ? <Collect promo={p} /> : null}
+    </article>
+  );
+}
+
+/**
+ * Escrow v2 pays the shop automatically after a NO result. Only a payment stuck for a few minutes
+ * (or escrow v1) shows a Collect button: POST /api/purchases/claim-merchant, one approval each.
+ */
+function Collect({ promo }: { promo: DashboardPromo }) {
+  const w = useWallet();
+  const list = usePoll(() => api.promotionPurchases(promo.id), 15_000, [promo.id]);
+  const due = (list.data?.purchases ?? []).filter((r) => r.onChainState === "Hedged");
+  const seenFor = useSeenFor(due.map((r) => `${r.purchasePda}:collect`));
+  const ready = due
+    .filter((r) => !r.autoPayout || seenFor(`${r.purchasePda}:collect`) >= STUCK_AFTER_SECS)
+    .slice(0, 20);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  if (ready.length === 0 || !w.wallet) return null;
+  const amount = ready.reduce((a, r) => a + BigInt(r.amount), 0n);
+
+  async function collect() {
+    if (!w.wallet) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const { challenges } = await api.claimMerchant(
+        ready.map((r) => r.purchasePda),
+        w.wallet.id,
+      );
+      for (const [i, ch] of challenges.entries()) {
+        await w.execute(
+          ch.challengeId,
+          `Collect order #${ch.purchaseKey.slice(-4).toUpperCase()} (${i + 1} of ${challenges.length})`,
+        );
+      }
+      list.refresh();
+      void w.refreshWallet();
+    } catch (err) {
+      setProblem(describe(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-rule pt-3">
+      <Button size="md" className="w-full" busy={busy} onClick={collect}>
+        Collect {usd(amount)}
+      </Button>
+      {problem ? (
+        <Note tone="error" title={problem.title}>
+          {problem.detail}
+        </Note>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Edit a live promo. The coupon count and the selling-out threshold are this app's own (kept in
+ * this browser until the API stores them); item, price, game and max odds are fixed on Arc once
+ * the promo is live.
+ */
+function EditSheet({ promo, onClose }: { promo: DashboardPromo | null; onClose: () => void }) {
+  const [total, setTotal] = useState(25);
+  const [at, setAt] = useState(DEFAULT_SELLING_OUT_AT);
+  useEffect(() => {
+    if (!promo) return;
+    const reg = registeredCoupons(promo.id);
+    const server = (
+      promo as DashboardPromo & { coupons?: { total: number; sellingOutAt?: number } | null }
+    ).coupons;
+    setTotal(reg?.total ?? server?.total ?? Math.max(25, promo.stats.hedged + 10));
+    setAt(reg?.sellingOutAt ?? server?.sellingOutAt ?? DEFAULT_SELLING_OUT_AT);
+  }, [promo]);
+  if (!promo) return null;
+  const max =
+    promo.live?.thresholdBps !== undefined
+      ? `${Math.round(promo.live.thresholdBps / 100)}%`
+      : promo.maxYesPriceMicroUsd
+        ? `${Math.round(Number(promo.maxYesPriceMicroUsd) / 10_000)}%`
+        : "–";
+  return (
+    <Sheet open onClose={onClose} title={`Edit ${promo.itemName}`}>
+      <div className="space-y-3">
+        <Stepper
+          label="Coupons"
+          value={total}
+          min={Math.max(1, promo.stats.hedged)}
+          max={1000}
+          onChange={setTotal}
+        />
+        <Stepper
+          label="“Selling out” at"
+          value={at}
+          min={1}
+          max={Math.max(1, total)}
+          onChange={setAt}
+          suffix="left"
+        />
+        <ul className="divide-y divide-rule rounded-[18px] bg-paper ring-1 ring-inset ring-rule">
+          {[
+            ["Item and price", `${promo.itemName}, ${price(promo.offerAmount)}`],
+            ["Free if", condition(promo)],
+            ["Max odds", max],
+          ].map(([k, v]) => (
+            <li key={k} className="flex items-center gap-3 px-4 py-3 text-[14.5px]">
+              <IconLock size={16} className="shrink-0 text-ink-faint" />
+              <span className="text-ink-soft">{k}</span>
+              <span className="ml-auto truncate font-semibold">{v}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-[13px] text-ink-faint">
+          Item, price, game and max odds are locked once a promo is live. Start a new promo to
+          change them.
+        </p>
+        <Button
+          size="lg"
+          onClick={() => {
+            registerCoupons(promo.id, total, at);
+            onClose();
+          }}
+        >
+          Save
+        </Button>
+      </div>
+    </Sheet>
+  );
 }

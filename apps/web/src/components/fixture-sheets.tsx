@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { publicConfig } from "@/lib/config";
 import { onFixtureSheet, type FixtureSheet } from "@/lib/wallet/fixture-bus";
-import { Button, inputClass } from "./ui";
+import { Button, INPUT, Mark } from "./kit";
 
 /**
- * DEV-ONLY stand-ins for Circle's own screens (email code, approval) in fixture mode. They are
- * deliberately plain and labeled as fixtures; the real ones are drawn by Circle's SDK.
+ * DEV-ONLY stand-ins for Circle's own screens (email code, approval) in fixture mode
+ * (NEXT_PUBLIC_WALLET_FIXTURE=1, never in production builds). The real ones are drawn by Circle's
+ * SDK; these match the app so the preview reads like the product, with a one-line preview note.
  */
 export function FixtureSheets() {
   const [sheet, setSheet] = useState<FixtureSheet | null>(null);
@@ -18,62 +19,72 @@ export function FixtureSheets() {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-end bg-[#211D28]/50 p-3 sm:place-items-center"
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 backdrop-blur-[2px] sm:items-center"
       role="dialog"
       aria-modal="true"
-      aria-label={sheet.kind === "otp" ? "Fixture email code" : "Fixture approval"}
+      aria-label={sheet.kind === "otp" ? "Enter your code" : "Approve"}
     >
-      <div className="w-full max-w-sm rounded-[20px] bg-white p-5 shadow-2xl ring-2 ring-stamp/60">
-        <p className="mb-3 inline-block rounded bg-stamp-soft px-2 py-0.5 text-[12px] font-bold text-stamp">
-          Fixture: stands in for Circle&apos;s screen
-        </p>
+      <div className="w-full max-w-[480px] animate-sheet-up rounded-t-[28px] bg-paper-raised px-5 pb-8 pt-5 ring-1 ring-rule sm:rounded-[28px]">
+        <div className="mb-4 flex items-center gap-2 text-[14px] font-semibold text-ink-soft">
+          <Mark className="h-5" /> Wincentive
+        </div>
         {sheet.kind === "otp" ? (
           <form
             onSubmit={(e) => {
               e.preventDefault();
               sheet.resolve(code);
             }}
-            className="space-y-3"
+            className="space-y-4"
           >
-            <h2 className="font-wide text-[18px] font-bold">Enter the code</h2>
-            <p className="text-[14px] text-ink-soft">
-              Circle would email a 6-digit code to {sheet.email}. In fixture mode any 6 digits work.
-            </p>
+            <div>
+              <h2 className="font-display text-[28px]">Enter your code</h2>
+              <p className="mt-1.5 text-[15px] text-ink-soft">We sent 6 digits to {sheet.email}.</p>
+            </div>
             <input
               id="fixture-otp"
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
-              className={`${inputClass} h-12 text-center font-mono text-[22px] tracking-[0.4em]`}
+              placeholder="000000"
+              className={`${INPUT} font-num h-16 text-center text-[30px] tracking-[0.35em]`}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               autoFocus
             />
-            <div className="flex gap-2">
-              <Button type="submit" className="flex-1" disabled={code.length !== 6}>
-                Verify
-              </Button>
-              <Button type="button" variant="secondary" onClick={sheet.reject}>
-                Cancel
-              </Button>
-            </div>
+            <Button type="submit" size="lg" disabled={code.length !== 6}>
+              Verify
+            </Button>
+            <button
+              type="button"
+              onClick={sheet.reject}
+              className="w-full text-center text-[15px] font-semibold text-ink-soft"
+            >
+              Cancel
+            </button>
+            <p className="text-center text-[12px] text-ink-faint">
+              Preview mode: any 6 digits work.
+            </p>
           </form>
         ) : (
-          <div className="space-y-3">
-            <h2 className="font-wide text-[18px] font-bold">Approve</h2>
-            <p className="text-[15px]">{sheet.what}</p>
-            <p className="text-[13px] text-ink-soft">
-              Circle would show this request and ask you to confirm. Nothing is sent in fixture
-              mode.
-            </p>
-            <div className="flex gap-2">
-              <Button className="flex-1" onClick={sheet.resolve} id="fixture-approve">
-                Approve
-              </Button>
-              <Button variant="secondary" onClick={sheet.reject} id="fixture-decline">
-                Decline
-              </Button>
+          <div className="space-y-4">
+            <div>
+              <h2 className="font-display text-[28px]">Approve</h2>
+              <p className="mt-2 text-[17px] leading-snug">{sheet.what}</p>
             </div>
+            <Button size="lg" onClick={sheet.resolve} id="fixture-approve">
+              Approve
+            </Button>
+            <button
+              type="button"
+              onClick={sheet.reject}
+              id="fixture-decline"
+              className="w-full text-center text-[15px] font-semibold text-ink-soft"
+            >
+              Decline
+            </button>
+            <p className="text-center text-[12px] text-ink-faint">
+              Preview mode: nothing leaves this browser.
+            </p>
           </div>
         )}
       </div>

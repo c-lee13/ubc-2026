@@ -2,23 +2,18 @@
 
 import { useId, useState } from "react";
 import { useWallet } from "@/lib/wallet/session";
-import { Button, inputClass, Notice, Spinner } from "./ui";
+import { Button, INPUT, Note, Spinner } from "./kit";
 
 /**
- * Email login. The person types an email, Circle emails a code, and that's the whole wallet setup:
- * no app, no seed phrase, no network switch.
+ * Email login (Circle email wallets, docs/FRONTEND-API.md "Login"). Type an email, get a code,
+ * done: no app, no seed phrase. Logging in never starts a payment.
  */
 export function LoginCard({
-  title = "Log in with your email",
-  lead,
-  compact,
-  cta = "Email me a code",
+  cta = "Continue",
+  hint = "We'll email you a 6-digit code. No app needed.",
 }: {
-  title?: string;
-  lead?: string;
-  compact?: boolean;
-  /** Button label. */
   cta?: string;
+  hint?: string | null;
 }) {
   const w = useWallet();
   const [email, setEmail] = useState("");
@@ -27,55 +22,52 @@ export function LoginCard({
 
   if (!w.available) {
     return (
-      <Notice tone="warn" title="Email login isn't set up">
-        Missing NEXT_PUBLIC_CIRCLE_APP_ID.
-      </Notice>
+      <Note tone="warn" title="Sign-in isn't set up on this site">
+        It needs NEXT_PUBLIC_CIRCLE_APP_ID.
+      </Note>
     );
   }
 
   return (
     <form
-      className={compact ? "space-y-3" : "space-y-4"}
+      className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
         if (!busy && email.trim()) void w.login(email);
       }}
     >
-      {compact ? null : (
-        <div>
-          <h3 className="font-wide text-[19px] font-bold">{title}</h3>
-          {lead ? <p className="mt-1 text-[14.5px] text-ink-soft">{lead}</p> : null}
-        </div>
-      )}
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <label className="sr-only" htmlFor={id}>
-          Email
-        </label>
-        <input
-          id={id}
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          required
-          placeholder="you@example.com"
-          className={`${inputClass} h-12 text-[16px]`}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={busy}
-        />
-        <Button type="submit" size="lg" className="h-12 shrink-0" busy={busy}>
-          {busy ? phaseText(w.phase) : cta}
-        </Button>
-      </div>
+      <label className="sr-only" htmlFor={id}>
+        Email
+      </label>
+      <input
+        id={id}
+        type="email"
+        inputMode="email"
+        autoComplete="email"
+        required
+        placeholder="you@email.com"
+        className={`${INPUT} h-14`}
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        disabled={busy}
+      />
+      <Button type="submit" size="lg" busy={busy} disabled={!email.trim()}>
+        {busy ? phaseText(w.phase) : cta}
+      </Button>
       {busy ? (
-        <p className="flex items-center gap-2 text-[13.5px] text-ink-soft" aria-live="polite">
+        <p
+          className="flex items-center justify-center gap-2 text-[14px] text-ink-2"
+          aria-live="polite"
+        >
           <Spinner /> {phaseDetail(w.phase)}
         </p>
+      ) : hint ? (
+        <p className="text-center text-[13.5px] text-ink-3">{hint}</p>
       ) : null}
       {w.problem ? (
-        <Notice tone="error" title={w.problem.title}>
+        <Note tone="error" title={w.problem.title}>
           {w.problem.detail}
-        </Notice>
+        </Note>
       ) : null}
     </form>
   );
@@ -83,20 +75,20 @@ export function LoginCard({
 
 function phaseText(p: string): string {
   return p === "sending-code"
-    ? "Sending…"
+    ? "Sending code"
     : p === "awaiting-code"
       ? "Check your email"
-      : "Setting up…";
+      : "Setting up";
 }
 
 function phaseDetail(p: string): string {
   switch (p) {
     case "sending-code":
-      return "Sending your code…";
+      return "Sending your code";
     case "awaiting-code":
-      return "Enter the code from your email.";
+      return "Enter the code from your email";
     case "creating-wallet":
-      return "Creating your dollar wallet…";
+      return "Setting up your balance";
     default:
       return "";
   }

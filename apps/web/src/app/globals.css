@@ -1,42 +1,60 @@
 @import "tailwindcss";
 
 /*
- * Zahin's Wincentive palette (warm off-white paper, near-black ink, purple primary, orange accent)
- * as named tokens. Zahin's screens use the hex values directly; the prototype's screens (Discover,
- * My purchases, the counter screen) and shared pieces (login, buttons, notices) use these names, so
- * every page reads as one design. Meanings stay fixed: purple = a good outcome or the main action,
- * deep purple = a real record on Arc, hatched orange = a simulated hedge, red = stop.
+ * Wincentive, 11-18 redesign. Base: Dylan's dark prototype (frontend-prototype-unsteered): the
+ * purple-black page, the logo's bright ribbon on black, wide Archivo display type, big pink odds,
+ * cream buttons, the price-tag voucher with its guilloche rosette. His token names are kept
+ * (paper, ink, note, ribbon-*) so the voucher and seal components work unchanged; the short names
+ * below (bg, surface, line, pink...) are the redesign's own aliases for the same palette.
+ * Meanings: pink = a good outcome and the odds, ribbon = the brand and the "it's free" moment,
+ * orange = urgency (selling out, ending soon), amber = a simulated number (shop side only).
  */
 @theme {
-  --color-paper: #faf9f6;
-  --color-paper-raised: #ffffff;
-  --color-paper-deep: #f1ece2;
-  --color-ink: #211d28;
-  --color-ink-soft: #5a5463;
-  --color-ink-faint: #8a8494;
-  --color-rule: #e6e1d8;
-  --color-note: #6133a7;
-  --color-note-soft: #efe9f8;
-  --color-chain: #3f2a66;
-  --color-chain-soft: #efe9f8;
-  --color-sim: #7a4208;
-  --color-sim-soft: #fdebd9;
-  --color-stamp: #c4372b;
-  --color-stamp-soft: #fcedeb;
+  /* Dylan's prototype palette */
+  --color-paper: #0b0710;
+  --color-paper-raised: #15101d;
+  --color-paper-deep: #221a2d;
+  --color-ink: #f5f0fa;
+  --color-ink-soft: #a99db9;
+  --color-ink-faint: #6f6481;
+  --color-rule: #2d2439;
+  --color-note: #ff4fb0;
+  --color-note-soft: #3b1430;
+  --color-chain: #a98bff;
+  --color-chain-soft: #231a45;
+  --color-sim: #ffb020;
+  --color-sim-soft: #33260b;
+  --color-stamp: #ff4d4f;
+  --color-stamp-soft: #3a1214;
+  --color-ribbon-violet: #7a2bff;
+  --color-ribbon-magenta: #e93fd0;
+  --color-ribbon-pink: #ff4f8e;
+  --color-ribbon-orange: #ff6b2c;
+  --color-ribbon-amber: #ffb020;
 
-  /* The logo ribbon, as in Zahin's brand hairline. */
-  --color-ribbon-violet: #6133a7;
-  --color-ribbon-magenta: #b13bd8;
-  --color-ribbon-pink: #f5539c;
-  --color-ribbon-orange: #f58c38;
-  --color-ribbon-amber: #f5a623;
+  /* Redesign aliases */
+  --color-bg: #0b0710;
+  --color-surface: #15101d;
+  --color-surface-2: #1b1524;
+  --color-surface-3: #241c30;
+  --color-line: #2d2439;
+  --color-line-strong: #3c3149;
+  --color-ink-2: #a99db9;
+  --color-ink-3: #6f6481;
+  --color-pink: #ff4fb0;
+  --color-violet: #7a2bff;
+  --color-orange: #ff6b2c;
+  --color-amber: #ffb020;
+  --color-danger: #ff4d4f;
 
-  /* Fonts are vendored in app/fonts and loaded once in app/layout.tsx (next/font/local). */
-  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
   --animate-stamp: stamp-land 420ms cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
   --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+  --animate-sheet-up: sheet-up 380ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  --animate-fade-in: fade-in 240ms ease-out both;
+  --animate-pop: pop 460ms cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
 }
 
 @keyframes stamp-land {
@@ -51,33 +69,143 @@
     transform: rotate(var(--stamp-rot, -8deg)) scale(1);
   }
 }
-
 @keyframes pulse-dot {
   0%,
   100% {
     opacity: 1;
   }
   50% {
-    opacity: 0.35;
+    opacity: 0.3;
   }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* Rotating hero word: each word rolls up into place. */
+@keyframes word-in {
+  from {
+    transform: translateY(0.5em);
+    opacity: 0;
+    filter: blur(6px);
+  }
+  to {
+    transform: none;
+    opacity: 1;
+    filter: none;
+  }
+}
+.word-in {
+  display: inline-block;
+  animation: word-in 520ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+/* Pay sheet: the side-button hint and the face scan. */
+@keyframes side-hint {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateX(-5px);
+    opacity: 1;
+  }
+}
+.side-hint {
+  animation: side-hint 1.1s ease-in-out infinite;
+}
+@keyframes scan-line {
+  0% {
+    transform: translateY(-18px);
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(18px);
+    opacity: 0;
+  }
+}
+.scan-line {
+  animation: scan-line 900ms ease-in-out infinite;
+}
+
+/* Receipt: the ribbon header shimmers once when a purchase lands. */
+@keyframes sweep {
+  from {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-18deg);
+  }
+}
+.sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  animation: sweep 1100ms 250ms ease-out both;
 }
 
 @layer base {
   html {
     background: var(--color-paper);
     color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
   }
   body {
     font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    font-feature-settings: "tnum" 1;
   }
   ::selection {
-    background: #6133a7;
+    background: var(--color-ribbon-violet);
     color: #fff;
   }
-  /* Default focus ring for anything without its own (Zahin's components set theirs explicitly). */
   :focus-visible {
-    outline: 2px solid #6133a7;
+    outline: 2.5px solid var(--color-chain);
     outline-offset: 2px;
+    border-radius: 3px;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="range"] {
+    accent-color: var(--color-note);
   }
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -90,45 +218,79 @@
   }
 }
 
-/* Big numbers and headings in the prototype's screens, in Zahin's display face. */
+/* Dylan's expanded display cut (a notch narrower than his 125% for body-adjacent headings). */
 @utility font-display {
-  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.035em;
+  font-stretch: 122%;
+  font-variation-settings: "wdth" 122;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   line-height: 0.98;
-  font-variant-numeric: tabular-nums;
 }
 
 @utility font-wide {
-  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-stretch: 112%;
+  font-variation-settings: "wdth" 112;
+}
+
+/* Numbers that matter: odds, countdowns, prices, order codes. Wide and heavy, tabular. */
+@utility font-num {
+  font-stretch: 118%;
+  font-variation-settings: "wdth" 118;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Item names and section titles. */
+@utility font-title {
+  font-stretch: 110%;
+  font-variation-settings: "wdth" 110;
+  font-weight: 700;
   letter-spacing: -0.015em;
 }
 
-/* Simulated values: diagonal hatching, the drafting convention for "projected, not real". */
-@utility bg-hatch {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    color-mix(in oklab, var(--color-ribbon-orange) 26%, transparent) 0 1px,
-    transparent 1px 6px
-  );
-}
-
+/* Simulated values (shop side only): diagonal hatching, "projected, not real". */
 @utility bg-hatch-soft {
   background-color: var(--color-sim-soft);
   background-image: repeating-linear-gradient(
     -45deg,
-    color-mix(in oklab, var(--color-ribbon-orange) 22%, transparent) 0 1px,
+    color-mix(in oklab, var(--color-sim) 16%, transparent) 0 1px,
     transparent 1px 7px
   );
 }
 
-/* The logo's ribbon (Zahin's brand hairline gradient). Fills for the payoff moments. */
+/* The logo's ribbon. */
 @utility bg-ribbon {
   background-image: linear-gradient(
     100deg,
     var(--color-ribbon-violet) 0%,
-    var(--color-ribbon-magenta) 40%,
-    var(--color-ribbon-pink) 66%,
+    var(--color-ribbon-magenta) 45%,
+    var(--color-ribbon-pink) 72%,
     var(--color-ribbon-orange) 100%
   );
+}
+
+@utility text-ribbon {
+  background-image: linear-gradient(
+    100deg,
+    #9a55ff,
+    var(--color-ribbon-magenta) 40%,
+    var(--color-ribbon-orange) 80%,
+    var(--color-ribbon-amber)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }

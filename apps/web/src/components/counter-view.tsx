@@ -1,56 +1,83 @@
 "use client";
 
-import { pauseText, type PurchaseSummaryDto } from "@/lib/api";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import type { PurchaseSummaryDto } from "@/lib/api";
 import { api } from "@/lib/client";
+import { servedCodes, setServed } from "@/lib/coupons";
 import { describe } from "@/lib/errors";
-import { chance, conditionText, countdown, orderNumber, usd } from "@/lib/format";
+import { clock } from "@/lib/format";
 import { useNowSeconds, useOrigin, usePoll } from "@/lib/hooks";
+import { condition, oddsPct, price, shortCountdown } from "@/lib/promo-view";
+import { IconBack, IconCheck } from "./icons";
+import { Note, Spinner } from "./kit";
+import { CouponsLeft, type Promo } from "./promo-card";
 import { QrCode } from "./qr";
-import { Notice, Spinner } from "./ui";
 
 /**
- * The barista's screen: the promo's QR code for customers to scan, and the live order feed. An
- * order says "Paid & hedged: serve" only when the server's canServe is true (the payment is in the
- * escrow and the hedge is confirmed); a failed hedge says don't serve. The feed is
- * GET /api/promotions/:id/purchases (newest first), polled every 3 s; its 4-character `orderCode`
- * is the one on the customer's receipt.
+ * The counter screen (Dylan's prototype layout): the promo's QR code for customers to scan, and the
+ * live order feed with the 4-character order code that is also on the customer's receipt. Hand the
+ * item over only when the server's canServe is true; tap Served when it's out. "Served" marks are
+ * CLIENT-SIDE (this device), there is no API field for them. Feed: GET
+ * /api/promotions/:id/purchases (newest first), polled every 3 s.
  */
 export function CounterView({ promoId }: { promoId: string }) {
   const origin = useOrigin();
   const now = useNowSeconds();
   const promo = usePoll(() => api.promotion(promoId), 10_000, [promoId]);
-  const p = promo.data?.promotion;
+  const p = promo.data?.promotion as Promo | undefined;
   const orders = usePoll(p ? () => api.promotionPurchases(p.id) : null, 3_000, [p?.id]);
+  const [served, setServedState] = useState<Record<string, number>>({});
+  useEffect(() => setServedState(servedCodes(promoId)), [promoId]);
 
   if (!p) {
     return promo.error ? (
-      <Notice tone="error" title={describe(promo.error).title}>
-        {describe(promo.error).detail}
-      </Notice>
+      <div className="mx-auto max-w-[480px] px-4 pt-10">
+        <Note tone="error" title={describe(promo.error).title}>
+          {describe(promo.error).detail}
+        </Note>
+      </div>
     ) : (
-      <p className="flex items-center justify-center gap-2 py-24 text-ink-soft">
-        <Spinner /> Loading the promo…
-      </p>
+      <div className="grid min-h-dvh place-items-center text-ink-soft">
+        <Spinner className="h-6 w-6" />
+      </div>
     );
   }
 
   const link = `${origin}/checkout/${p.id}`;
-  const cond = conditionText(p.outcomeLabel, p.geminiMarketId);
-  const live = p.live;
-  const selling = live?.phase === "LIVE";
+  const cond = condition(p);
+  const selling = p.live?.phase === "LIVE";
   const rows = orders.data?.purchases ?? [];
+  const toggle = (key: string, on: boolean) => {
+    setServed(p.id, key, on);
+    setServedState(servedCodes(p.id));
+  };
+  const isServed = (r: PurchaseSummaryDto) => Boolean(served[r.purchasePda.toLowerCase()]);
+  const waiting = rows.filter((r) => !isServed(r));
+  const done = rows.filter(isServed);
 
   return (
-    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-12">
-      <aside className="lg:sticky lg:top-6 lg:self-start">
-        <div className="rounded-2xl bg-paper-raised p-5 ring-1 ring-ink/10">
-          <p className="font-wide text-[22px] leading-tight font-bold">
-            {p.itemName} {usd(p.offerAmount).replace(/\.00$/, "")}, free if {cond}
+    <main className="mx-auto w-full max-w-[480px] px-4 pb-16 lg:grid lg:max-w-[1100px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-10">
+      <div className="lg:sticky lg:top-0 lg:self-start">
+        <header className="flex h-[60px] items-center justify-between">
+          <Link
+            href="/merchant"
+            aria-label="Back to workspace"
+            className="-ml-2 grid h-10 w-10 place-items-center rounded-full text-ink-soft hover:bg-surface-2 hover:text-ink"
+          >
+            <IconBack size={22} />
+          </Link>
+          <p className="text-[14px] font-semibold text-ink-soft">Counter</p>
+          <span className="w-10" />
+        </header>
+        <section className="rounded-[28px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
+          <p className="font-display text-[26px] leading-tight">
+            {p.itemName} {price(p.offerAmount)}, free if {cond}
           </p>
           <p className="mt-1 text-[15px] text-ink-soft">{p.shop.name}</p>
-          <div className="relative mx-auto mt-5 w-full overflow-hidden rounded-xl ring-1 ring-ink/15">
+          <div className="relative mx-auto mt-5 max-w-[240px] overflow-hidden rounded-[20px] bg-white p-3 lg:max-w-none lg:p-4">
             {origin ? (
-              <div className={selling ? "" : "opacity-25"}>
+              <div className={selling ? "" : "opacity-15"}>
                 <QrCode value={link} label={`QR code: ${link}`} className="w-full" />
               </div>
             ) : (
@@ -58,99 +85,152 @@ export function CounterView({ promoId }: { promoId: string }) {
             )}
             {!selling ? (
               <div className="absolute inset-0 grid place-items-center">
-                <span
-                  className={`font-display -rotate-12 rounded-lg border-4 bg-paper-raised/70 px-4 py-2 text-[34px] tracking-[0.04em] ${live?.phase === "PAUSED" ? "border-sim text-sim" : "border-stamp text-stamp"}`}
-                  title={live?.phase === "PAUSED" ? pauseText(live.pauseReason) : undefined}
-                >
-                  {live?.phase === "PAUSED" ? "PAUSED" : "SALES CLOSED"}
+                <span className="font-display rounded-xl bg-black px-4 py-2 text-[24px] text-white">
+                  {p.live?.phase === "PAUSED"
+                    ? p.live.pauseReason === "BUDGET_USED"
+                      ? "Sold out"
+                      : "Paused"
+                    : "Sales closed"}
                 </span>
               </div>
             ) : null}
           </div>
           {selling ? (
             <>
-              <p className="mt-4 text-center text-[22px] font-bold">Scan to pay with your email</p>
-              {now !== null ? (
-                <div className="mt-4 grid grid-cols-2 gap-4 text-center">
-                  <p>
-                    <span className="font-display block text-[48px] leading-none sm:text-[64px] text-note">
-                      {chance(live?.liveAskMicroUsd)}
-                    </span>
-                    <span className="text-[15px] font-semibold text-ink-soft">
-                      chance it&apos;s free
-                    </span>
+              <p className="font-title mt-4 text-center text-[20px]">Scan to buy</p>
+              <div className="mt-4 grid grid-cols-2 gap-4 text-center">
+                <div>
+                  <p className="font-num text-[44px] text-note lg:text-[56px]">
+                    {Math.round(oddsPct(p.live?.liveAskMicroUsd) ?? 0)}%
                   </p>
-                  <p>
-                    <span className="font-display block text-[48px] leading-none sm:text-[64px]">
-                      {countdown(p.depositDeadline - now)}
-                    </span>
-                    <span className="text-[15px] font-semibold text-ink-soft">left to buy</span>
-                  </p>
+                  <p className="mt-1 text-[14px] text-ink-soft">chance it&apos;s free</p>
                 </div>
-              ) : null}
+                <div>
+                  <p className="font-num text-[44px] lg:text-[56px]">
+                    {now !== null ? shortCountdown(p.depositDeadline - now) : "–"}
+                  </p>
+                  <p className="mt-1 text-[14px] text-ink-soft">left to buy</p>
+                </div>
+              </div>
+              <div className="mt-4 flex justify-center">
+                <CouponsLeft p={p} sold={rows.filter((r) => r.canServe).length} />
+              </div>
             </>
           ) : null}
-        </div>
-      </aside>
+        </section>
+      </div>
 
-      <section aria-labelledby="orders" className="min-w-0">
+      <section aria-labelledby="orders" className="mt-8 min-w-0 lg:mt-[60px]">
         <div className="flex items-baseline justify-between gap-3">
-          <h1 id="orders" className="font-display text-[34px] md:text-[44px]">
+          <h1 id="orders" className="font-display text-[36px]">
             Orders
           </h1>
-          <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-note">
-            <span className="animate-pulse-dot h-2 w-2 rounded-full bg-note" aria-hidden />
+          <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-note">
+            <span className="h-2 w-2 animate-pulse-dot rounded-full bg-note" aria-hidden />
             Live
           </span>
         </div>
-
-        <div className="mt-5 space-y-3">
+        <div className="mt-4 space-y-3">
           {orders.data === undefined ? (
             orders.error ? (
-              <Notice tone="error" title={describe(orders.error).title}>
+              <Note tone="error" title={describe(orders.error).title}>
                 {describe(orders.error).detail}
-              </Notice>
+              </Note>
             ) : (
               <p className="flex items-center gap-2 text-ink-soft">
-                <Spinner /> Loading orders…
+                <Spinner /> Loading orders
               </p>
             )
-          ) : rows.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-ink/25 px-6 py-12 text-center text-ink-soft">
-              No orders yet.
+          ) : waiting.length === 0 ? (
+            <div className="rounded-[24px] border border-dashed border-line-strong px-6 py-10 text-center text-ink-soft">
+              {rows.length
+                ? "All caught up."
+                : "No orders yet. They pop up here the second someone pays."}
             </div>
           ) : (
-            rows.map((r) => <OrderRow key={r.purchasePda} r={r} item={p.itemName} />)
+            waiting.map((r) => (
+              <OrderRow
+                key={r.purchasePda}
+                r={r}
+                item={p.itemName}
+                onServed={() => toggle(r.purchasePda, true)}
+              />
+            ))
           )}
         </div>
+        {done.length > 0 ? (
+          <div className="mt-8">
+            <p className="font-title mb-2 text-[17px] text-ink-soft">Served ({done.length})</p>
+            <ul className="divide-y divide-rule overflow-hidden rounded-[20px] bg-paper-raised ring-1 ring-inset ring-rule">
+              {done.map((r) => (
+                <li key={r.purchasePda} className="flex items-center gap-3 px-4 py-3">
+                  <IconCheck size={18} className="text-note" />
+                  <span className="font-num text-[22px]">#{r.orderCode}</span>
+                  <span className="text-[14px] text-ink-soft">{clock(r.depositedAt)}</span>
+                  <button
+                    type="button"
+                    onClick={() => toggle(r.purchasePda, false)}
+                    className="ml-auto text-[14px] font-semibold text-ink-soft hover:text-ink"
+                  >
+                    Undo
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
-    </div>
+    </main>
   );
 }
 
-function OrderRow({ r, item }: { r: PurchaseSummaryDto; item: string }) {
+function OrderRow({
+  r,
+  item,
+  onServed,
+}: {
+  r: PurchaseSummaryDto;
+  item: string;
+  onServed: () => void;
+}) {
   const refund = r.step === "REFUNDING" || r.step === "REFUND_READY" || r.step === "REFUNDED";
-  const tone = r.canServe
-    ? "bg-ribbon text-white"
-    : refund
-      ? "bg-stamp-soft text-stamp ring-1 ring-stamp/30"
-      : "bg-paper-raised text-ink ring-1 ring-ink/15";
+  if (r.canServe) {
+    return (
+      <div className="flex items-center justify-between gap-4 rounded-[24px] bg-ribbon px-5 py-4 text-white">
+        <div className="min-w-0">
+          <p className="font-display text-[54px] leading-none">#{r.orderCode}</p>
+          <p className="mt-1.5 text-[15px] text-white/85">
+            {item}, paid {clock(r.depositedAt)}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onServed}
+          className="h-14 shrink-0 rounded-[18px] bg-white px-5 text-[17px] font-bold text-black transition-transform active:scale-[0.97]"
+        >
+          Served
+        </button>
+      </div>
+    );
+  }
   return (
     <div
-      className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-1 rounded-2xl px-6 py-5 ${tone}`}
+      className={`flex items-center justify-between gap-4 rounded-[24px] px-5 py-4 ring-1 ring-inset ${refund ? "bg-stamp-soft ring-stamp/30" : "bg-paper-raised ring-rule"}`}
     >
-      <span className="font-display text-[64px] leading-none">
-        {r.orderCode ? `#${r.orderCode}` : orderNumber(r.purchasePda)}
-      </span>
-      <span className="text-right">
-        <span className="font-display block text-[40px] leading-none">
-          {r.canServe ? "Serve" : refund ? "Don't serve" : "Wait"}
-        </span>
-        <span className="text-[15px] opacity-85">
-          {r.canServe ? "Paid & hedged" : refund ? "Payment going back" : "Covering it now…"}
-          {r.canServe ? `, ${item.toLowerCase()}` : ""}
-        </span>
-      </span>
+      <p
+        className={`font-display text-[44px] leading-none ${refund ? "text-stamp" : "text-ink-soft"}`}
+      >
+        #{r.orderCode}
+      </p>
+      <p className="text-right text-[15px] font-semibold">
+        {refund ? (
+          <span className="text-stamp">Don&apos;t serve: paying back</span>
+        ) : (
+          <span className="inline-flex items-center gap-2 text-ink-soft">
+            <Spinner /> Confirming
+          </span>
+        )}
+      </p>
     </div>
   );
 }

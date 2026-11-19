@@ -24,6 +24,12 @@ export interface VoucherProps {
   tilt?: boolean;
   /** On phones, keep the short landscape layout (laid out at 125% and scaled to 80%) instead of portrait. */
   compact?: boolean;
+  /** Customer view: no serial number and no market-id microprint (the redesign's quieter tag). */
+  plain?: boolean;
+  /** Replaces the default "Your $5 back if ..." headline. */
+  headline?: string;
+  /** Replaces the default "Pay $5 for a latte" terms line. */
+  terms?: string;
   className?: string;
 }
 
@@ -105,32 +111,34 @@ export function Voucher(props: VoucherProps) {
               <span className="font-wide truncate text-[3.9cqw] font-bold text-ink-soft @min-[420px]:text-[2.05cqw]">
                 {props.shopName}
               </span>
-              <span className="shrink-0 font-mono text-[2.7cqw] text-ink-faint @min-[420px]:text-[1.25cqw]">
-                {props.sample
-                  ? "Sample"
-                  : props.serial
-                    ? `No. ${shortAddr(props.serial, 4)}`
-                    : "Draft"}
-              </span>
+              {props.plain ? null : (
+                <span className="shrink-0 font-mono text-[2.7cqw] text-ink-faint @min-[420px]:text-[1.25cqw]">
+                  {props.sample
+                    ? "Sample"
+                    : props.serial
+                      ? `No. ${shortAddr(props.serial, 4)}`
+                      : "Draft"}
+                </span>
+              )}
             </div>
             <p className="font-display my-[2.5cqw] text-[8.4cqw] text-balance @min-[420px]:my-0 @min-[420px]:text-[5cqw]">
-              Your {dollars} back if {props.condition}.
+              {props.headline ?? `Your ${dollars} back if ${props.condition}.`}
             </p>
             <div className="space-y-[1.2cqw]">
               <div className="flex flex-wrap items-baseline justify-between gap-x-[3cqw] gap-y-[0.5cqw] border-t border-ink/20 pt-[1.6cqw] text-[3.6cqw] @min-[420px]:pt-[1.1cqw] @min-[420px]:text-[1.7cqw]">
-                <span>
-                  Pay {dollars} for a {props.itemName.toLowerCase()}
-                </span>
+                <span>{props.terms ?? `Pay ${dollars} for a ${props.itemName.toLowerCase()}`}</span>
                 {props.closesLabel ? (
                   <span className="text-ink-soft">{props.closesLabel}</span>
                 ) : null}
               </div>
-              <div
-                aria-hidden
-                className="overflow-hidden text-[1.9cqw] leading-none tracking-[0.18em] whitespace-nowrap text-ink-faint/70 @min-[420px]:text-[0.95cqw]"
-              >
-                {micro}
-              </div>
+              {props.plain ? null : (
+                <div
+                  aria-hidden
+                  className="overflow-hidden text-[1.9cqw] leading-none tracking-[0.18em] whitespace-nowrap text-ink-faint/70 @min-[420px]:text-[0.95cqw]"
+                >
+                  {micro}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -240,7 +248,10 @@ export function Seal({ seed, size = 44, label }: { seed: string; size?: number; 
         <circle r={44} fill="var(--color-paper-raised)" stroke={`url(#${gid})`} strokeWidth={3} />
       </svg>
       {label ? (
-        <span className="font-display relative text-[11px] leading-none tracking-[-0.03em]">
+        <span
+          className="font-display relative leading-none tracking-[-0.03em]"
+          style={{ fontSize: Math.round(size * (label.length > 3 ? 0.2 : 0.25)) }}
+        >
           {label}
         </span>
       ) : null}

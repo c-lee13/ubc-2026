@@ -49,6 +49,11 @@ export interface PromotionDto {
   hedgeBudget?: string;
   onChainState: OnChainPromoState;
   live: LiveStateDto | null;
+  /**
+   * PROPOSED, not in apps/api yet: the shop's coupon count. scripts/sample-api.mjs sends it; the
+   * real API doesn't, so lib/coupons.ts falls back to this browser's registry.
+   */
+  coupons?: { total: number; sold: number; sellingOutAt?: number } | null;
 }
 
 /** SIMULATED: assumes the simulated fills were real. */
@@ -412,9 +417,13 @@ export function createApi(
         auth: true,
       }),
     wallets: () => request<{ wallets: WalletDto[] }>("/api/wallet", { auth: true }),
-    faucet: (walletId: string) =>
+    /**
+     * Add money (testnet: Circle's faucet). `amount` is what the person picked; the real API
+     * ignores it (Circle drips a fixed amount), the dev fixture adds exactly that.
+     */
+    faucet: (walletId: string, amount?: string) =>
       request<{ ok: true; address: string; testnet: true }>("/api/wallet/faucet", {
-        ...post({ walletId }),
+        ...post(amount ? { walletId, amount } : { walletId }),
         auth: true,
       }),
 
@@ -593,13 +602,16 @@ export function describeApiError(err: unknown): { title: string; detail: string 
         return { title: "Already approved", detail: "Your wallet can already pay this shop." };
       case "insufficient_usdc":
         return {
-          title: "Not enough dollars",
-          detail: "Your balance is too low for this. Add test dollars, then try again.",
+          title: "Not enough in your balance",
+          detail: "Add money, then pay again. Nothing was charged.",
         };
       case "promo_not_buyable":
         return {
-          title: "Not selling right now",
-          detail: `This promo is paused because ${pauseText(b.pauseReason as PauseReason | null)}. Nothing was charged.`,
+          title: b.pauseReason === "BUDGET_USED" ? "Sold out" : "Back in a moment",
+          detail:
+            b.pauseReason === "BUDGET_USED"
+              ? "Every coupon for this promo is taken. Nothing was charged."
+              : "Sales paused for a moment. Nothing was charged; try again shortly.",
         };
       case "not_an_arc_promotion":
         return {

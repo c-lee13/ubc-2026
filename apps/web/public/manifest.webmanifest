@@ -1,13 +1,13 @@
 {
   "name": "Wincentive",
   "short_name": "Wincentive",
-  "description": "Free if it happens. Pay in dollars with your email.",
-  "start_url": "/discover",
+  "description": "Win and it's free.",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#FAF9F6",
-  "theme_color": "#FAF9F6",
+  "background_color": "#0b0710",
+  "theme_color": "#0b0710",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
