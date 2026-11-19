@@ -1,14 +1,18 @@
 /* global process, URL, console, setInterval */
 // SAMPLE-DATA mock of the promo server (apps/api) for local design review only.
 // Plain node http, no deps. Every promo, purchase, price and outcome here is invented sample data
-// (Austin shops), shaped like apps/web/src/lib/api.ts expects. Outcomes are labeled
-// "manual-demo-fixture". GET /__sample lists ids.
+// (Austin shops), shaped like docs/FRONTEND-API.md and apps/web/src/lib/api.ts. Outcomes are
+// labeled "manual-demo-fixture". GET /__sample lists ids. The real API is the reference: build
+// against it, and keep this file in step when its shapes change.
+// Behaves like escrow v2 (checkout "one-tap", autoPayout true); SAMPLE_ESCROW=v1 for the v1 shapes.
 // Preview with sample data: `pnpm dev:sample` in one terminal, then
 // `NEXT_PUBLIC_WALLET_FIXTURE=1 pnpm dev:web` in another, and open http://localhost:3000. PORT env, default 4000.
 import http from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 
 const PORT = Number(process.env.PORT ?? 4000);
+/** Escrow v2 (default): one-tap checkout and automatic payouts. */
+const AUTO = process.env.SAMPLE_ESCROW !== "v1";
 const now = () => Math.floor(Date.now() / 1000);
 const iso = (s) => new Date(s * 1000).toISOString();
 const pad = (n) => String(n).padStart(2, "0");
@@ -476,7 +480,13 @@ function chainState(x) {
 function receiptStep(status, outcome) {
   const resolved = (o) =>
     o === "YES"
-      ? { step: "YOU_WON", canServe: true, message: "It happened! Your money back is ready." }
+      ? {
+          step: "YOU_WON",
+          canServe: true,
+          message: AUTO
+            ? "It happened! Your money back is on its way."
+            : "It happened! Your money back is ready.",
+        }
       : o === "NO"
         ? { step: "NOT_THIS_TIME", canServe: true, message: "Not this time. Thanks for playing!" }
         : {
@@ -501,7 +511,11 @@ function receiptStep(status, outcome) {
         message: "This promo isn't available right now. Your payment is being returned.",
       };
     case "CANCELLED":
-      return { step: "REFUND_READY", canServe: false, message: "Your refund is ready to claim." };
+      return {
+        step: "REFUND_READY",
+        canServe: false,
+        message: AUTO ? "Your refund is on its way." : "Your refund is ready to claim.",
+      };
     case "REFUNDED":
       return { step: "REFUNDED", canServe: false, message: "Refunded." };
     case "RESOLVED":
@@ -536,11 +550,13 @@ function receipt(x) {
   void deadline;
   return {
     purchasePda: x.key,
+    orderCode: orderCode(x.key),
     customer: x.customer,
     amount: x.amount,
     status,
     onChainState,
     ...receiptStep(status, outcome),
+    autoPayout: AUTO,
     promotion: {
       id: p.id,
       shopName: shopOf(p).name,
@@ -573,6 +589,26 @@ function receipt(x) {
     },
   };
 }
+const orderCode = (key) => key.slice(-4).toUpperCase();
+/** A list row (counter feed, customer purchases): no hedge detail, like the API's summary. */
+function summaryOf(x) {
+  const r = receipt(x);
+  return {
+    purchasePda: r.purchasePda,
+    orderCode: r.orderCode,
+    customer: r.customer,
+    amount: r.amount,
+    depositedAt: x.depositedAt,
+    status: r.status,
+    onChainState: r.onChainState,
+    step: r.step,
+    canServe: r.canServe,
+    message: r.message,
+    autoPayout: AUTO,
+    receipt: `/api/purchases/${x.key}`,
+  };
+}
+const newestFirst = (a, b) => b.depositedAt - a.depositedAt;
 function stats(p) {
   const rows = PURCHASES.filter((x) => x.promotionId === p.id).map(receipt);
   let hedged = 0,
@@ -900,13 +936,22 @@ const server = http.createServer(async (req, res) => {
     if ((m = /^\/api\/promotions\/([^/]+)\/initialize$/.exec(p)) && method === "POST") {
       const x = findPromo(decodeURIComponent(m[1]));
       if (!x) return send(res, 404, { error: "promotion_not_found" });
-      return send(res, 200, { challengeId: randomUUID(), promoId: x.promoPda });
+      if (x.status !== "DRAFT") return send(res, 409, { error: "already_published" });
+      return send(res, 200, {
+        challengeId: randomUUID(),
+        promoPda: x.promoPda,
+        confirm: `/api/promotions/${x.id}/confirm`,
+      });
     }
     if ((m = /^\/api\/promotions\/([^/]+)\/purchases$/.exec(p))) {
       const x = findPromo(decodeURIComponent(m[1]));
       if (!x) return send(res, 404, { error: "promotion_not_found" });
       return send(res, 200, {
-        purchases: PURCHASES.filter((y) => y.promotionId === x.id).map(receipt),
+        promotionId: x.id,
+        purchases: PURCHASES.filter((y) => y.promotionId === x.id)
+          .sort(newestFirst)
+          .slice(0, 50)
+          .map(summaryOf),
       });
     }
     if ((m = /^\/api\/promotions\/([^/]+)$/.exec(p))) {
@@ -932,13 +977,35 @@ const server = http.createServer(async (req, res) => {
         promotions: mine.map((x) => ({ ...promoDto(x, owner), stats: stats(x) })),
       });
     }
+    if (p === "/api/purchases" && method === "GET") {
+      const c = (qp("customer") ?? "").toLowerCase();
+      if (!/^0x[0-9a-f]{40}$/.test(c)) return send(res, 400, { error: "invalid_customer" });
+      const rows = PURCHASES.filter((y) => y.customer === c)
+        .sort(newestFirst)
+        .slice(0, 50)
+        .map((y) => {
+          const promo = findPromo(y.promotionId);
+          const { marketId } = marketOfPromo(promo);
+          return {
+            ...summaryOf(y),
+            promotion: {
+              id: promo.id,
+              shopName: shopOf(promo).name,
+              itemName: promo.itemName,
+              outcomeLabel: outcomeLabelOf(promo, marketId),
+              resolvedOutcome: resolvedOf(promo),
+            },
+          };
+        });
+      return send(res, 200, { customer: c, purchases: rows });
+    }
     if ((m = /^\/api\/purchases\/(0x[0-9a-fA-F]{64})$/.exec(p))) {
       const x = PURCHASES.find((y) => y.key === m[1].toLowerCase());
       if (!x) return send(res, 404, { error: "purchase_not_found" });
       return send(res, 200, receipt(x));
     }
     // Checkout (reached only when the web fixture is off): no real wallet, appends in memory.
-    if ((m = /^\/api\/checkout\/([^/]+)\/(status|approve|deposit)$/.exec(p))) {
+    if ((m = /^\/api\/checkout\/([^/]+)\/(status|approve|deposit|sign|submit)$/.exec(p))) {
       const x = findPromo(decodeURIComponent(m[1]));
       if (!x) return send(res, 404, { error: "promotion_not_found" });
       if (!req.headers["x-user-token"]) return send(res, 401, { error: "login_required" });
@@ -951,27 +1018,61 @@ const server = http.createServer(async (req, res) => {
           pauseReason: live.pauseReason,
           usdcBalance: "20000000",
           enoughBalance: true,
+          checkout: AUTO ? "one-tap" : "approve-deposit",
           needsApproval: false,
         });
       if (m[2] === "approve") return send(res, 409, { error: "already_approved" });
+      if ((m[2] === "sign" || m[2] === "submit") && !AUTO)
+        return send(res, 409, { error: "one_tap_unavailable" });
+      const b = await readBody(req);
+      if (m[2] === "sign") {
+        if (!live.canBuy)
+          return send(res, 409, { error: "promo_not_buyable", pauseReason: live.pauseReason });
+        const purchaseIdHex = sha(randomUUID()).slice(0, 32);
+        return send(res, 200, {
+          step: "sign",
+          challengeId: randomUUID(),
+          purchaseIdHex,
+          purchaseKey: h32(`live:${x.id}:${purchaseIdHex}`),
+          validBefore: now() + 300,
+          submit: `/api/checkout/${x.id}/submit`,
+        });
+      }
+      if (m[2] === "submit") {
+        if (typeof b.purchaseIdHex !== "string" || !/^[0-9a-f]{32}$/.test(b.purchaseIdHex))
+          return send(res, 400, { error: "invalid_purchase_id" });
+        if (typeof b.validBefore !== "number")
+          return send(res, 400, { error: "invalid_valid_before" });
+        if (typeof b.signature !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(b.signature))
+          return send(res, 400, { error: "invalid_signature" });
+        if (b.validBefore <= now()) return send(res, 409, { error: "signature_expired" });
+      }
       if (!live.canBuy)
         return send(res, 409, { error: "promo_not_buyable", pauseReason: live.pauseReason });
-      const b = await readBody(req);
-      const purchaseIdHex = sha(randomUUID()).slice(0, 32);
+      const purchaseIdHex = m[2] === "submit" ? b.purchaseIdHex : sha(randomUUID()).slice(0, 32);
       const key = h32(`live:${x.id}:${purchaseIdHex}`);
-      PURCHASES.push({
-        key,
-        promotionId: x.id,
-        customer: addr(`wallet:${b.walletId ?? "anon"}`),
-        amount: x.offerAmount,
-        depositedAt: now(),
-        hedge: null,
-        depositTx: h32(`tx:${key}`),
-        markTx: null,
-        cancelTx: null,
-        claimTx: null,
-        claimedBy: null,
-      });
+      if (!PURCHASES.some((y) => y.key === key))
+        PURCHASES.push({
+          key,
+          promotionId: x.id,
+          customer: addr(`wallet:${b.walletId ?? "anon"}`),
+          amount: x.offerAmount,
+          depositedAt: now(),
+          hedge: null,
+          depositTx: h32(`tx:${key}`),
+          markTx: null,
+          cancelTx: null,
+          claimTx: null,
+          claimedBy: null,
+        });
+      if (m[2] === "submit")
+        return send(res, 200, {
+          step: "submitted",
+          purchaseKey: key,
+          receipt: `/api/purchases/${key}`,
+          txHash: h32(`tx:${key}`),
+          alreadyApplied: false,
+        });
       return send(res, 200, {
         step: "deposit",
         challengeId: randomUUID(),
@@ -980,12 +1081,28 @@ const server = http.createServer(async (req, res) => {
         receipt: `/api/purchases/${key}`,
       });
     }
+    if (p === "/api/purchases/claim-merchant" && method === "POST") {
+      const b = await readBody(req);
+      const keys = Array.isArray(b.purchaseKeys) ? b.purchaseKeys : [];
+      if (keys.length === 0 || keys.length > 20)
+        return send(res, 400, { error: "invalid_purchase_keys" });
+      return send(res, 200, {
+        challenges: keys.map((k) => ({
+          purchaseKey: String(k).toLowerCase(),
+          challengeId: randomUUID(),
+        })),
+      });
+    }
     if (
-      /^\/api\/purchases\/(claim-merchant|[^/]+\/(claim-refund|cancel-expired))$/.test(p) &&
+      (m = /^\/api\/purchases\/([^/]+)\/(claim-refund|cancel-expired)$/.exec(p)) &&
       method === "POST"
     ) {
-      if (p.endsWith("cancel-expired")) return send(res, 409, { error: "timeout_not_elapsed" });
-      return send(res, 200, { challengeId: randomUUID() });
+      const x = PURCHASES.find((y) => y.key === m[1].toLowerCase());
+      if (!x) return send(res, 404, { error: "purchase_not_found" });
+      const state = chainState(x);
+      if (m[2] === "cancel-expired" && state !== "Deposited")
+        return send(res, 409, { error: "not_cancellable", onChainState: state });
+      return send(res, 200, { challengeId: randomUUID(), purchaseKey: x.key });
     }
     return send(res, 404, { error: "Not Found", message: `Route ${method}:${p} not found` });
   } catch (e) {
