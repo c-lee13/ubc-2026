@@ -37,8 +37,9 @@ export function AddMoneySheet({
   const [amount, setAmount] = useState(20);
   const [stage, setStage] = useState<Stage>("amount");
   const [problem, setProblem] = useState<Problem | null>(null);
-  // Circle's testnet faucet limits drips; then the fallback is faucet.circle.com with the address.
-  const [faucetDown, setFaucetDown] = useState(false);
+  // Circle's API faucet can refuse (daily limit, or "Forbidden" on accounts Circle hasn't upgraded,
+  // which is every request). The fallback is Circle's web faucet with this wallet's address.
+  const [faucetDown, setFaucetDown] = useState<null | "limit" | "refused">(null);
   const [copied, setCopied] = useState(false);
 
   // Reset only when the sheet opens (the balance, and so `need`, changes while it is open).
@@ -72,7 +73,13 @@ export function AddMoneySheet({
       setTimeout(onClose, 1600);
     } catch (err) {
       await minScan;
-      setFaucetDown(err instanceof ApiError && err.code === "faucet_unavailable");
+      setFaucetDown(
+        err instanceof ApiError && err.code === "faucet_unavailable"
+          ? /limit|rate|too many|429/i.test(String(err.body.message ?? ""))
+            ? "limit"
+            : "refused"
+          : null,
+      );
       setProblem(describe(err));
       setStage("error");
     }
@@ -128,12 +135,18 @@ export function AddMoneySheet({
         stage === "error" ? (
           <div className="space-y-3 text-[13.5px] leading-snug">
             <p className="font-semibold text-white">
-              {faucetDown ? "Top-up limit reached" : (problem?.title ?? "Payment not completed")}
+              {faucetDown === "limit"
+                ? "Top-up limit reached"
+                : faucetDown
+                  ? "Add test money at Circle's faucet"
+                  : (problem?.title ?? "Payment not completed")}
             </p>
             <p className="text-[#98989f]">
               {faucetDown ? (
                 <>
-                  The testnet allows a few top-ups a day. Add more at{" "}
+                  {faucetDown === "limit"
+                    ? "The testnet allows a few top-ups a day. Add more at "
+                    : "Circle doesn't send test money from inside the app on this account. Get free test USDC at "}
                   <a
                     href="https://faucet.circle.com"
                     target="_blank"
@@ -142,7 +155,7 @@ export function AddMoneySheet({
                   >
                     faucet.circle.com
                   </a>{" "}
-                  (Arc Testnet) with your wallet address.
+                  (pick Arc Testnet) with your wallet address, then come back. Nothing was charged.
                 </>
               ) : (
                 problem?.detail
@@ -165,13 +178,33 @@ export function AddMoneySheet({
                 <p className="break-all text-[11px] text-[#98989f]">{w.wallet.address}</p>
               )
             ) : null}
-            <button
-              type="button"
-              onClick={() => setStage("pay")}
-              className="h-[50px] w-full rounded-[12px] bg-[#2c2c2e] text-[15px] font-semibold text-white"
-            >
-              Try Again
-            </button>
+            {faucetDown === "refused" ? (
+              <>
+                <a
+                  href="https://faucet.circle.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="grid h-[50px] w-full place-items-center rounded-[12px] bg-white text-[15px] font-semibold text-black"
+                >
+                  Open faucet.circle.com
+                </a>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="h-[44px] w-full rounded-[12px] text-[15px] font-semibold text-[#98989f]"
+                >
+                  Back
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStage("pay")}
+                className="h-[50px] w-full rounded-[12px] bg-[#2c2c2e] text-[15px] font-semibold text-white"
+              >
+                Try Again
+              </button>
+            )}
           </div>
         ) : null
       }

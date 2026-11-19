@@ -646,7 +646,7 @@ export function describeApiError(err: unknown): { title: string; detail: string 
         return {
           title: "Circle's faucet said no",
           detail:
-            "Circle limits test USDC to about once a day per wallet. Use faucet.circle.com (Arc Testnet) with your wallet address instead.",
+            "Circle didn't send test USDC from inside the app (a daily limit, or this account isn't allowed). Get it free at faucet.circle.com (Arc Testnet) with your wallet address.",
         };
       case "circle_error": {
         const msg = String(b.message ?? b.code ?? "unknown error").replace(/\.+$/, "");
