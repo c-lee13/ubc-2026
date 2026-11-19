@@ -6,7 +6,7 @@ the game goes. The customer logs in with an email code, pays once in USDC, and g
 automatically if the outcome happens.
 
 Built on **Arc** (Circle's stablecoin L1) with **Circle** email-login wallets, **Gemini** prediction
-market data, **QuickNode** (RPC and Streams) and **Supabase**. Hedges are simulated against Gemini's
+market data, **QuickNode** (Arc RPC and WebSocket events) and **Supabase**. Hedges are simulated against Gemini's
 live order book; no Gemini order is ever placed.
 
 ## Live on Arc testnet
@@ -37,8 +37,9 @@ feed.
 
 **Backend (`apps/api`):** reads Gemini, simulates and records hedges, runs the purchase state
 machine and workers, relays on-chain actions, and stores everything in Supabase. It watches the
-escrow through QuickNode Streams (webhook) or RPC polling, and verifies every event over RPC before
-acting on it.
+escrow through a QuickNode Arc testnet endpoint: QuickNode pushes each escrow event over WebSocket as
+it lands, a getLogs sweep every 2 s fills any gap, and every event is re-verified over RPC at
+`finalized` before the backend acts on it. QuickNode Streams (webhook) is also supported.
 
 ## Economic design
 
@@ -131,7 +132,8 @@ Key settings for the Arc version (`.env.example` documents the rest):
 | `SOLANA_GATEWAY`                            | `arc` (runs the relayer; needs `ARC_RELAYER_KEY_PATH`) |
 | `ARC_ESCROW_ADDRESS`                        | the v2 escrow above                                    |
 | `CIRCLE_API_KEY`, `CIRCLE_APP_ID`           | Circle testnet key and app id (email login)            |
-| `ARC_EVENT_SOURCE`                          | `poll`, `websocket`, or `streams` (QuickNode webhook)  |
+| `ARC_RPC_URL`, `ARC_WSS_URL`                | QuickNode Arc testnet endpoint (HTTPS and WSS)         |
+| `ARC_EVENT_SOURCE`                          | `websocket` (QuickNode push), `poll`, or `streams`     |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase project (in-memory store if unset)            |
 
 At startup the API logs which escrow version it found: v2 with the relayer gives one-tap checkout

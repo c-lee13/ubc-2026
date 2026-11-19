@@ -38,10 +38,12 @@ laptops and accounts and cannot message each other; this file, carried by git, i
   promo is still live (sales close Sat 12:00 PM).
 - **Not tested yet:** the automatic payout after a result. Needs a 5-min SOL window under 49%, or
   Saturday's game.
-- **Needed:** a QuickNode Arc testnet endpoint (HTTP + WSS) from Dev 3. Then set `ARC_RPC_URL`,
-  `ARC_WSS_URL` and `ARC_EVENT_SOURCE=websocket`; no code change. QuickNode's free public Arc endpoint
-  rate-limits `eth_getLogs` and subscriptions. Also needed: an admin switching the default branch to
-  `arc`.
+- **QuickNode is live (later the same day):** a QuickNode Arc testnet endpoint is set in Dev 4's
+  `.env` (`ARC_RPC_URL`, `ARC_WSS_URL`, `ARC_EVENT_SOURCE=websocket`); no code change. Checked: chain
+  5042002, `eth_getLogs`, WSS `newHeads`, and the Arc gateway starts on it with no errors. The URL holds
+  a private token, so ask Dev 4 for it; never commit it. QuickNode's free public Arc endpoint
+  rate-limits `eth_getLogs` and subscriptions, so don't use it.
+- **Needed:** the repo owner switching the default branch to `arc`.
 - **Reminder:** only one backend runs the relayer key at a time. Dev 4's laptop backend is off now.
 
 ### 2026-11-18 21:19 ET · Dev 3 Dylan (Claude) · branch `wincentive-redesign`
