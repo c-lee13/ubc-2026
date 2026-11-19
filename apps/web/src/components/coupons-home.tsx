@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import type { PromotionDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { useCouponRegistry } from "@/lib/coupons";
 import { describe } from "@/lib/errors";
-import { useNowSeconds, usePoll } from "@/lib/hooks";
+import { useNowSeconds, usePoll, type Polled } from "@/lib/hooks";
 import { HERO_WORDS } from "@/lib/items";
 import { condition, happened, price } from "@/lib/promo-view";
 import { useRole } from "@/lib/role";
 import { HowItWorksButton } from "./how-it-works";
 import { Button, Mark, Note, SectionTitle } from "./kit";
 import { PromoCard, type Promo } from "./promo-card";
+import { PromoMap } from "./promo-map";
 import { RolePick } from "./role-pick";
 import { CustomerShell } from "./shell";
 import { Seal } from "./voucher";
@@ -26,7 +28,7 @@ function Hero() {
   }, []);
   const word = HERO_WORDS[i]!;
   return (
-    <section className="pb-7 pt-5">
+    <section className="pb-7 pt-3">
       <h1 className="font-display text-[44px] leading-[0.95]">
         Win and your
         <br />
@@ -84,18 +86,85 @@ export function CouponsHome() {
     );
   }
   if (role === "merchant" && !asCustomer) return null;
+  return <CustomerCoupons />;
+}
+
+/** List or map of the same promos (one poll); the choice lives in the URL (?view=map). */
+function CustomerCoupons() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const view = params.get("view") === "map" ? "map" : "list";
+  const res = usePoll(() => api.promotions(), 15_000);
+  const now = useNowSeconds();
+  useCouponRegistry();
+  const promos = useMemo(() => (res.data?.promotions ?? []) as Promo[], [res.data]);
+  const open = useMemo(
+    () =>
+      promos.filter(
+        (p) =>
+          (p.live?.phase === "LIVE" || p.live?.phase === "PAUSED") &&
+          (now === null || p.depositDeadline > now),
+      ),
+    [promos, now],
+  );
+  const setView = (v: "list" | "map") => {
+    const q = new URLSearchParams(params.toString());
+    if (v === "map") q.set("view", "map");
+    else q.delete("view");
+    const s = q.toString();
+    router.replace(s ? `/?${s}` : "/", { scroll: false });
+  };
   return (
-    <CustomerShell>
-      <Hero />
-      <PromoLists />
+    <CustomerShell flush={view === "map"}>
+      <div className="flex items-center justify-between pb-1 pt-3">
+        <div
+          role="tablist"
+          aria-label="View"
+          className="grid grid-cols-2 gap-1 rounded-full bg-surface-2 p-1 ring-1 ring-inset ring-rule"
+        >
+          {(
+            [
+              ["list", "List"],
+              ["map", "Map"],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => setView(v)}
+              className={`h-8 rounded-full px-4 text-[14px] font-semibold transition-colors ${view === v ? "bg-ink text-black" : "text-ink-soft hover:text-ink"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {view === "map" ? <span className="text-[14px] text-ink-soft">Austin</span> : null}
+      </div>
+      {view === "map" ? (
+        res.data ? (
+          <PromoMap promos={open} now={now} />
+        ) : (
+          <Skeleton />
+        )
+      ) : (
+        <>
+          <Hero />
+          <PromoLists res={res} now={now} />
+        </>
+      )}
     </CustomerShell>
   );
 }
 
-function PromoLists() {
-  const res = usePoll(() => api.promotions(), 15_000);
-  const now = useNowSeconds();
-  useCouponRegistry();
+function PromoLists({
+  res,
+  now,
+}: {
+  res: Polled<{ promotions: PromotionDto[] }>;
+  now: number | null;
+}) {
   const promos = (res.data?.promotions ?? []) as Promo[];
 
   const { endingSoon, byShop, paidOut } = useMemo(() => {

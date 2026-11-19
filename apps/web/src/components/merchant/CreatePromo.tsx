@@ -15,6 +15,7 @@ import {
   saveDraft,
   type LocalDraft,
 } from "@/lib/merchant";
+import { NEIGHBORHOODS, placeIn, rememberShopPlace } from "@/lib/places";
 import { oddsPct } from "@/lib/promo-view";
 import { useWallet } from "@/lib/wallet/session";
 import { IconBack, IconCheck, IconMinus, IconPlus } from "../icons";
@@ -58,6 +59,9 @@ export function CreatePromo() {
   const origin = useOrigin();
 
   const [shopName, setShopName] = useState("Barton Springs Coffee Co.");
+  // Where the shop is, for the customer map. Sent as the promo's `location` text (an API field),
+  // and the exact point is remembered in this browser (lib/places.ts).
+  const [hood, setHood] = useState(NEIGHBORHOODS[0]!.name);
   const [itemName, setItemName] = useState("Latte");
   const [priceText, setPriceText] = useState("5");
   const [maxPct, setMaxPct] = useState(DEFAULT_MAX_PCT);
@@ -206,6 +210,7 @@ export function CreatePromo() {
       const created = await api.createPromotion({
         merchant: shop.address,
         shopName: shopName.trim(),
+        location: `${hood}, Austin`,
         itemName: itemName.trim(),
         geminiMarketId: marketId,
         outcomeLabel,
@@ -216,6 +221,8 @@ export function CreatePromo() {
       });
       const id = created.promotion.id;
       registerCoupons(id, coupons, sellingOutAt);
+      const n = NEIGHBORHOODS.find((x) => x.name === hood);
+      if (n) rememberShopPlace(shop.address, placeIn(n, shop.address));
       const local: LocalDraft = { promotionId: id, init: created.initializePromo };
       saveDraft(shop.address, local);
       setDraftSaved(true);
@@ -295,6 +302,19 @@ export function CreatePromo() {
             onChange={(e) => setShopName(e.target.value)}
             maxLength={80}
           />
+        </Field>
+        <Field label="Neighborhood (for the map)">
+          <select
+            className={`${INPUT} h-12 appearance-none`}
+            value={hood}
+            onChange={(e) => setHood(e.target.value)}
+          >
+            {NEIGHBORHOODS.map((n) => (
+              <option key={n.name} value={n.name}>
+                {n.name}, Austin
+              </option>
+            ))}
+          </select>
         </Field>
         <div className="grid grid-cols-[1fr_120px] gap-3">
           <Field label="Item">

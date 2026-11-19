@@ -84,11 +84,11 @@ export function BottomTabs() {
 }
 
 /** Customer screens: top bar, content, the two bottom tabs. */
-export function CustomerShell({ children }: { children: ReactNode }) {
+export function CustomerShell({ children, flush }: { children: ReactNode; flush?: boolean }) {
   return (
     <>
       <TopBar />
-      <main className="pb-[92px]">
+      <main className={flush ? "pb-[calc(60px+env(safe-area-inset-bottom))]" : "pb-[92px]"}>
         <Column className="px-4">{children}</Column>
       </main>
       <BottomTabs />

@@ -37,7 +37,13 @@ export interface PromotionDto {
   id: string;
   status: "DRAFT" | "ACTIVE";
   promoPda: string | null;
-  shop: { merchant: string; name: string; location: string };
+  /** `geo` is PROPOSED, not in apps/api yet (scripts/sample-api.mjs sends it); see lib/places.ts. */
+  shop: {
+    merchant: string;
+    name: string;
+    location: string;
+    geo?: { lat: number; lng: number } | null;
+  };
   itemName: string;
   offerAmount: string;
   outcomeLabel: string;

@@ -149,24 +149,28 @@ const SHOPS = {
     merchant: addr("shop:barton-springs-coffee"),
     name: "Barton Springs Coffee Co.",
     location: "S Lamar Blvd, Austin",
+    geo: { lat: 30.2551, lng: -97.7637 },
     createdAt: iso(T0 - 9 * 86400),
   },
   lomita: {
     merchant: addr("shop:la-lomita"),
     name: "Taquería La Lomita",
     location: "E Cesar Chavez St, Austin",
+    geo: { lat: 30.2567, lng: -97.7262 },
     createdAt: iso(T0 - 6 * 86400),
   },
   spur: {
     merchant: addr("shop:rusty-spur"),
     name: "The Rusty Spur",
     location: "Rainey St, Austin",
+    geo: { lat: 30.2588, lng: -97.7389 },
     createdAt: iso(T0 - 5 * 86400),
   },
   bluebonnet: {
     merchant: addr("shop:bluebonnet-bakehouse"),
     name: "Bluebonnet Bakehouse",
     location: "E 6th St, Austin",
+    geo: { lat: 30.2643, lng: -97.7298 },
     createdAt: iso(T0 - 3 * 86400),
   },
 };
@@ -503,7 +507,8 @@ function promoDto(p, owner = false) {
     id: p.id,
     status: p.status,
     promoPda: p.status === "ACTIVE" ? p.promoPda : null,
-    shop: { merchant: s.merchant, name: s.name, location: s.location },
+    // geo: PROPOSED field (not in apps/api), real-ish Austin coordinates for the map.
+    shop: { merchant: s.merchant, name: s.name, location: s.location, geo: s.geo ?? null },
     itemName: p.itemName,
     offerAmount: p.offerAmount,
     outcomeLabel: outcomeLabelOf(p, marketId),

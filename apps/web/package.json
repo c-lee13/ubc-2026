@@ -12,6 +12,7 @@
     "@circle-fin/w3s-pw-web-sdk": "^1.1.11",
     "@hedged/arc": "workspace:*",
     "@hedged/shared": "workspace:*",
+    "maplibre-gl": "^5.24.1",
     "next": "^16.4.6",
     "qrcode-generator": "^2.0.4",
     "react": "^19.3.1",
