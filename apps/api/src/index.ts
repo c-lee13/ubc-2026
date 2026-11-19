@@ -170,6 +170,7 @@ try {
       log: app.log,
     });
     workers = await startWorkers({
+      checkpointPrefix: config.workers.gateway === "arc" ? "arc:" : "",
       gateway,
       store,
       orchestrator,
