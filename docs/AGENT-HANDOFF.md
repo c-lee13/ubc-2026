@@ -14,6 +14,32 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-18 20:46 ET · Dev 3 Dylan (Claude) · branch `wincentive-redesign` (from `arc-frontend-test`)
+
+- Frontend redesign per `frontend-feedback-2026-11-18.md`. Look = Dylan's dark prototype
+  (`frontend-prototype-unsteered`: purple-black, wide Archivo, pink odds, cream buttons, the price-tag
+  voucher and guilloche seal, ribbon receipt header, counter layout), less funky, normal app flow. All
+  wiring from `arc-frontend-test` kept (`lib/api.ts`, `lib/wallet/*`, one-tap v2 + approve-deposit v1,
+  claim/cancel fallbacks, publish, counter feed, routes). Not pushed.
+- Customer: first-open role choice; tabs Coupons (rotating hero line, Ending soon, By shop, Just paid
+  out) and My promos; profile (balance, Add money, Merchant workspace switch, sign out). Card: seal +
+  price, odds %, "Free if ...", info icon, coupons left + Selling out, countdown, Buy. Checkout: tag,
+  odds, clock, sign in, balance, Add money (amount sheet, then a double-tap pay sheet; behind it
+  `POST /api/wallet/faucet`), one-tap pay. Receipt: big order code, live 4-step status, upside-only.
+- Shop: workspace (stats, Live/History, Edit, Counter, Collect fallback, drafts), New promo (live card
+  preview, game picker + underdog line suggestion, max odds 49% default, coupons + selling-out
+  threshold, cost to cover one sale computed as you type), counter (QR, odds, clock, orders, Served).
+- Client-side only, no API field yet (needs Rachel if we want it cross-device): role; coupon count and
+  selling-out threshold (proposed `promotion.coupons: { total, sold, sellingOutAt }`, the sample server
+  sends it); counter "Served" marks. Add money's amount is honored by the fixture only; the real faucet
+  drips Circle's fixed amount (limit reached -> faucet.circle.com fallback with the address).
+- Preview, no backend: `PORT=4030 node scripts/sample-api.mjs` and
+  `NEXT_ALLOWED_DEV_ORIGINS=<lan ip> NEXT_PUBLIC_WALLET_FIXTURE=1 NEXT_PUBLIC_API_URL=http://<lan ip>:4030 next dev -H 0.0.0.0 -p 3030`
+  (phone on the same wifi opens `http://<lan ip>:3030`). Sample promos are buyable in fixture mode now.
+- Verified: typecheck, lint, format:check, web build; every route at 390px with 0 console errors in
+  fixture mode (also over the LAN IP); headless flows: role pick, add money, buy, receipt, My promos,
+  shop sign-in, create + publish, edit, customer buys it, counter Served.
+
 ### 2026-11-18 19:42 ET · Dev 3 Dylan (Claude) · branch `arc-frontend-test`
 
 - Frontend wired to `docs/FRONTEND-API.md` for the first real test purchase. Looks = Zahin's screens (from
