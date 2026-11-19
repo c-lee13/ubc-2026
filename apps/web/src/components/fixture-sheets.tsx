@@ -67,10 +67,7 @@ export function FixtureSheets() {
           </form>
         ) : (
           <div className="space-y-4">
-            <div>
-              <h2 className="font-display text-[28px]">Approve</h2>
-              <p className="mt-2 text-[17px] leading-snug">{sheet.what}</p>
-            </div>
+            <ApproveSummary what={sheet.what} />
             <Button size="lg" onClick={sheet.resolve} id="fixture-approve">
               Approve
             </Button>
@@ -88,6 +85,28 @@ export function FixtureSheets() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** "Pay $5.00 to Shop for a latte" reads as a payment: the amount big, who and what below. */
+function ApproveSummary({ what }: { what: string }) {
+  const m = /^Pay (\$[\d,.]+) to (.+?) for (.+)$/.exec(what);
+  if (!m) {
+    return (
+      <div>
+        <h2 className="font-display text-[28px]">Approve</h2>
+        <p className="mt-2 text-[17px] leading-snug">{what}</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="text-[15px] text-ink-soft">Confirm payment</p>
+      <p className="font-num mt-1 text-[56px]">{m[1]}</p>
+      <p className="mt-2 text-[16px] leading-snug">
+        To <span className="font-semibold">{m[2]}</span> for {m[3]}
+      </p>
     </div>
   );
 }

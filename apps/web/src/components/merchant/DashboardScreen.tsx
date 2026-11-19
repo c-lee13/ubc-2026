@@ -126,7 +126,7 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
                 </div>
               </div>
 
-              {readOnly ? (
+              {readOnly && mine ? (
                 <div className="mt-3">
                   <Note title="Read-only view">
                     This is another shop&apos;s workspace. Sign in with its email to make changes.
