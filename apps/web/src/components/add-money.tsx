@@ -115,11 +115,9 @@ export function AddMoneySheet({
           </div>
         </div>
         <Button size="lg" className="mt-5" onClick={() => setStage("pay")}>
-          Continue
+          Add ${amount}
         </Button>
-        <p className="mt-3 text-center text-[12.5px] text-ink-3">
-          Your balance pays for promos in one tap. Testnet dollars in this demo.
-        </p>
+        <p className="mt-3 text-center text-[12.5px] text-ink-3">Pays for any promo in one tap.</p>
       </Sheet>
     );
   }
@@ -127,12 +125,6 @@ export function AddMoneySheet({
   return (
     <Sheet open={open} onClose={onClose} tone="black" labelledBy="paysheet-title">
       <div className="relative">
-        {stage === "pay" ? (
-          <span
-            aria-hidden
-            className="side-hint fixed right-0 top-[26%] z-[60] h-24 w-1.5 rounded-l-full bg-ink"
-          />
-        ) : null}
         <div className="flex items-center justify-between">
           <span id="paysheet-title" className="flex items-center gap-2 text-[15px] font-semibold">
             <Mark className="h-5" /> Wincentive
@@ -176,7 +168,6 @@ export function AddMoneySheet({
             >
               <FaceGlyph />
               <span className="text-[17px] font-semibold">Double-tap to pay</span>
-              <span className="text-[13px] text-ink-3">or double-click the side button</span>
             </button>
           ) : stage === "scan" ? (
             <div className="flex flex-col items-center gap-3 py-5">

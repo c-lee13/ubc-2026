@@ -6,14 +6,14 @@ import { IconClose, IconInfo } from "./icons";
 
 /* ---------- brand ---------- */
 
-/** The bare logo mark (no box). The PNG has a black ground; `screen` drops it on any dark surface. */
+/** The bare logo mark, never boxed: a transparent cut of public/wincentive-mark.png. */
 export function Mark({ className = "h-7" }: { className?: string }) {
   return (
     <img
-      src="/wincentive-mark.png"
+      src="/wincentive-mark-clear.png"
       alt=""
       aria-hidden
-      className={`w-auto shrink-0 select-none object-contain mix-blend-screen ${className}`}
+      className={`w-auto shrink-0 select-none object-contain ${className}`}
       draggable={false}
     />
   );
@@ -220,10 +220,12 @@ export function Odds({
       : align === "center"
         ? "items-center text-center"
         : "items-start";
+  // No live price: show nothing rather than a dash.
+  if (pct === null) return <div className={className} />;
   return (
     <div className={`flex flex-col ${a} ${className}`}>
       <span className="font-num text-note" style={{ fontSize: size }}>
-        {pct === null ? "–" : `${Math.round(pct)}%`}
+        {`${Math.round(pct)}%`}
       </span>
       {label ? (
         <span className="mt-1 text-[12.5px] font-medium leading-tight text-ink-soft">{label}</span>

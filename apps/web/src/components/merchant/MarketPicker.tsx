@@ -56,7 +56,7 @@ export function MarketPicker({
         {(
           [
             ["games", "Games"],
-            ["windows", "SOL, 5 min"],
+            ["windows", "Quick 5-min"],
           ] as const
         ).map(([t, label]) => (
           <button
@@ -117,7 +117,7 @@ function Row({
         role="radio"
         aria-checked={selected}
         onClick={onClick}
-        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${selected ? "bg-note-soft" : "hover:bg-surface-2"}`}
+        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${selected ? "bg-note-soft" : "hover:bg-surface-2"} ${over && !selected ? "opacity-50" : ""}`}
       >
         <span
           className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${selected ? "bg-note text-black" : "ring-1 ring-inset ring-line-strong"}`}
@@ -187,7 +187,7 @@ function WindowList({
           key={w.marketId}
           selected={selected === w.marketId}
           onClick={() => onPick(w)}
-          title={`SOL closes up at ${clock(w.expiresAt)}`}
+          title={`Solana is up at ${clock(w.expiresAt)}`}
           sub={`Sales close ${clock(w.recommendedDepositDeadline)}${now !== null && w.recommendedDepositDeadline > now ? `, in ${shortCountdown(w.recommendedDepositDeadline - now)}` : ""}`}
           ask={w.bestAskMicroUsd}
           maxPct={maxPct}

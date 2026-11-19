@@ -28,7 +28,7 @@ function Hero() {
   return (
     <section className="pb-7 pt-5">
       <h1 className="font-display text-[44px] leading-[0.95]">
-        Put your
+        Win and your
         <br />
         <span className="inline-block min-w-[3ch]" aria-live="polite">
           <span key={word} className="word-in text-ribbon pb-1">
@@ -36,10 +36,10 @@ function Hero() {
           </span>
         </span>
         <br />
-        on the game.
+        is free.
       </h1>
       <div className="mt-3.5 flex items-center gap-2">
-        <p className="text-[16.5px] text-ink-soft">Buy it now. If they win, it&apos;s free.</p>
+        <p className="text-[16.5px] text-ink-soft">Underdogs only. Money back after the game.</p>
         <HowItWorksButton />
       </div>
     </section>
@@ -151,10 +151,10 @@ function PromoLists() {
     <div className="space-y-9">
       {endingSoon.length > 1 ? (
         <section aria-labelledby="ending-soon">
-          <SectionTitle aside="Before kickoff">
+          <SectionTitle>
             <span id="ending-soon">Ending soon</span>
           </SectionTitle>
-          <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
+          <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1">
             {endingSoon.map((p) => (
               <PromoCard key={p.id} p={p} now={now} variant="compact" />
             ))}
@@ -192,7 +192,7 @@ function PromoLists() {
       {paidOut.length > 0 ? (
         <section aria-labelledby="paid-out">
           <SectionTitle>
-            <span id="paid-out">Just paid out</span>
+            <span id="paid-out">Just went free</span>
           </SectionTitle>
           <ul className="divide-y divide-rule overflow-hidden rounded-[22px] bg-paper-raised ring-1 ring-inset ring-rule">
             {paidOut.map((p) => (

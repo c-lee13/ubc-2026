@@ -15,7 +15,15 @@ import { describe, type Problem } from "@/lib/errors";
 import { usd } from "@/lib/format";
 import { useNowSeconds, usePoll, useSeenFor } from "@/lib/hooks";
 import { localDrafts, sumStats, type DashboardPromo, type LocalDraft } from "@/lib/merchant";
-import { condition, happened, oddsPct, price, sellState, shortCountdown } from "@/lib/promo-view";
+import {
+  condition,
+  happened,
+  oddsPct,
+  price,
+  sellState,
+  shortCountdown,
+  whenText,
+} from "@/lib/promo-view";
 import { STUCK_AFTER_SECS } from "@/lib/purchases";
 import { useWallet } from "@/lib/wallet/session";
 import { IconEdit, IconLock, IconPlus, IconQr } from "../icons";
@@ -92,15 +100,12 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-paper/90 backdrop-blur-md">
+      <header className="sticky top-0 z-30 border-b border-rule/70 bg-paper/80 backdrop-blur-xl">
         <Column className="flex h-[60px] items-center justify-between px-4">
           <Link href="/merchant" className="flex items-center gap-2.5">
             <Wordmark />
-            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[12px] font-semibold text-ink-soft">
-              Shop
-            </span>
           </Link>
-          <ProfileButton />
+          <ProfileButton balance={false} />
         </Column>
       </header>
 
@@ -112,8 +117,7 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
                 Run a promo for your shop.
               </h1>
               <p className="mt-3 text-[16px] text-ink-soft">
-                Pick a game, set the price, and your customers get it free if the underdog wins. You
-                never cover the loss.
+                If the underdog wins, it&apos;s free for your customers. You&apos;re covered.
               </p>
               <div className="mt-6 rounded-[24px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
                 <p className="font-title mb-3 text-[18px]">Sign in with your shop&apos;s email</p>
@@ -269,7 +273,10 @@ function statusLine(
   switch (st.kind) {
     case "selling":
       return {
-        text: `Selling, ${now !== null ? shortCountdown(p.depositDeadline - now) : ""} left`,
+        text:
+          now !== null && p.depositDeadline - now < 3 * 3600
+            ? `Selling, ${shortCountdown(p.depositDeadline - now)} left`
+            : `Selling until ${whenText(p.depositDeadline, now)}`,
         tone: "live",
       };
     case "soldout":
@@ -489,7 +496,7 @@ function EditSheet({ promo, onClose }: { promo: DashboardPromo | null; onClose: 
           {[
             ["Item and price", `${promo.itemName}, ${price(promo.offerAmount)}`],
             ["Free if", condition(promo)],
-            ["Max odds", max],
+            ["Max chance", max],
           ].map(([k, v]) => (
             <li key={k} className="flex items-center gap-3 px-4 py-3 text-[14.5px]">
               <IconLock size={16} className="shrink-0 text-ink-faint" />
@@ -498,10 +505,7 @@ function EditSheet({ promo, onClose }: { promo: DashboardPromo | null; onClose: 
             </li>
           ))}
         </ul>
-        <p className="text-[13px] text-ink-faint">
-          Item, price, game and max odds are locked once a promo is live. Start a new promo to
-          change them.
-        </p>
+        <p className="text-[13px] text-ink-faint">Locked while live.</p>
         <Button
           size="lg"
           onClick={() => {

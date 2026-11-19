@@ -7,7 +7,7 @@ import { ApiError, type CheckoutStatusDto, type PromotionDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { publicConfig } from "@/lib/config";
 import { describe, type Problem } from "@/lib/errors";
-import { clock, dateTime, usd } from "@/lib/format";
+import { clock, countdown, usd } from "@/lib/format";
 import { useNowSeconds, usePoll } from "@/lib/hooks";
 import { withArticle } from "@/lib/items";
 import { condition, happened, oddsPct, price, sellState, shortCountdown } from "@/lib/promo-view";
@@ -19,7 +19,7 @@ import { HowItWorksButton } from "../how-it-works";
 import { IconCheck, IconClose, IconWallet } from "../icons";
 import { Button, Mark, Note, Odds, Spinner } from "../kit";
 import { LoginCard } from "../login-card";
-import { CouponsLeft, type Promo } from "../promo-card";
+import { CouponsLeft, closesText, type Promo } from "../promo-card";
 import { Voucher } from "../voucher";
 
 // Customer checkout, one clean screen: the promo as Dylan's price tag, the odds and the clock, then
@@ -96,10 +96,8 @@ function Offer({ p, now }: { p: Promo; now: number | null }) {
   const cond = condition(p);
   const st = sellState(p, now);
   const left = now === null ? null : p.depositDeadline - now;
-  const closes =
-    left !== null && left > 86_400
-      ? `Kickoff ${dateTime(p.depositDeadline)}`
-      : `Sales close ${clock(p.depositDeadline)}`;
+  const closes = closesText(p.depositDeadline, now);
+  const day = new Date(p.depositDeadline * 1000).toLocaleDateString("en-US", { weekday: "short" });
 
   return (
     <div className="animate-sheet-up">
@@ -114,7 +112,7 @@ function Offer({ p, now }: { p: Promo; now: number | null }) {
         amount={p.offerAmount}
         condition={cond}
         headline={st.kind === "won" ? `${happened(cond)}. It was free.` : `Free if ${cond}.`}
-        terms={`${p.itemName}, served now`}
+        terms="Served now"
         closesLabel={closes}
         marketId={p.geminiMarketId}
         plain
@@ -134,9 +132,11 @@ function Offer({ p, now }: { p: Promo; now: number | null }) {
             <Odds pct={oddsPct(p.live?.liveAskMicroUsd)} size={54} align="left" />
             {st.kind === "selling" && left !== null && left > 0 ? (
               <div className="text-right">
-                <span className="font-num block text-[54px]">{shortCountdown(left)}</span>
+                <span className="font-num block text-[54px]">
+                  {left > 12 * 3600 ? day : left < 3600 ? countdown(left) : shortCountdown(left)}
+                </span>
                 <span className="mt-1 block text-[12.5px] font-medium text-ink-soft">
-                  left to buy
+                  {left > 12 * 3600 ? `kickoff ${clock(p.depositDeadline)}` : "left to buy"}
                 </span>
               </div>
             ) : null}
@@ -157,7 +157,7 @@ function blockerFor(
   promo: PromotionDto,
   s: CheckoutStatusDto | undefined,
   now: number | null,
-  cond: string,
+  _cond: string,
 ): { title: string; detail: string } | null {
   const st = sellState(promo, now);
   switch (st.kind) {
@@ -169,10 +169,7 @@ function blockerFor(
         detail: "This one is locked in for the game. Find another promo.",
       };
     case "won":
-      return {
-        title: `${happened(cond)}. It was free.`,
-        detail: "This promo is over. Everyone who bought one got their money back.",
-      };
+      return { title: "Promo over", detail: "Everyone who bought one got it free." };
     case "done":
       return { title: "Promo over", detail: "Find another one on the Coupons tab." };
     case "soldout":
@@ -357,14 +354,20 @@ function PayPanel({ promo, cond, now }: { promo: Promo; cond: string; now: numbe
           <span className="text-[15px] text-ink-soft">Balance</span>
           <span className="font-num text-[22px]">{s ? usd(balance) : <Spinner />}</span>
         </div>
-        <Button size="sm" variant="secondary" onClick={() => setTopUp(true)}>
-          Add money
-        </Button>
+        {short ? null : (
+          <button
+            type="button"
+            onClick={() => setTopUp(true)}
+            className="text-[15px] font-semibold text-chain hover:text-ink"
+          >
+            Add money
+          </button>
+        )}
       </div>
 
       {short && !busy ? (
         <Button size="lg" onClick={() => setTopUp(true)}>
-          Add money to pay
+          Add money
         </Button>
       ) : (
         <Button size="lg" onClick={pay} disabled={!s || busy} className="relative overflow-hidden">
@@ -382,7 +385,7 @@ function PayPanel({ promo, cond, now }: { promo: Promo; cond: string; now: numbe
               <IconCheck /> Paid
             </>
           ) : (
-            `Pay ${cost} for ${withArticle(promo.itemName)}`
+            `Pay ${price(promo.offerAmount)} for ${withArticle(promo.itemName)}`
           )}
         </Button>
       )}
@@ -390,7 +393,7 @@ function PayPanel({ promo, cond, now }: { promo: Promo; cond: string; now: numbe
       <p className="text-center text-[13.5px] text-ink-soft">
         {short
           ? `You need ${usd(BigInt(promo.offerAmount) - balance)} more.`
-          : `If ${cond}, your ${cost} comes back right after the game.`}
+          : "Money back right after the game."}
       </p>
 
       {problem ? (

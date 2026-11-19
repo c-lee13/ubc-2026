@@ -75,7 +75,7 @@ const SPORTS = [
     marketId: "GEMI-NCAAF-2611212030-ARK-TEX-S-TEX-10.5",
     eventTicker: "GEMI-NCAAF-2611212030-ARK-TEX",
     eventTitle: "Arkansas at Texas",
-    outcomeLabel: "Texas wins by more than 10.5 points",
+    outcomeLabel: "Texas wins by 11+",
     category: "Sports",
     startsAt: KICK_TEX_ARK,
     ask: 180000,

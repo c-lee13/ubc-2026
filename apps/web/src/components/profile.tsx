@@ -58,7 +58,6 @@ export function Profile() {
             <Button size="lg" className="mt-4" onClick={() => setTopUp(true)}>
               Add money
             </Button>
-            <p className="mt-3 text-center text-[12.5px] text-ink-faint">USDC on Arc testnet</p>
           </section>
         </>
       ) : (
@@ -141,6 +140,9 @@ export function Profile() {
           </>
         ) : null}
       </ul>
+      <p className="mt-6 text-center text-[12px] text-ink-faint">
+        Payments by Circle on Arc. Test mode.
+      </p>
 
       <AddMoneySheet open={topUp} onClose={() => setTopUp(false)} />
       <Sheet open={how} onClose={() => setHow(false)} title="How it works">

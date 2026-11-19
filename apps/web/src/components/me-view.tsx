@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import type { CustomerPurchaseDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { describe } from "@/lib/errors";
-import { conditionText, usd } from "@/lib/format";
+import { conditionText, displayCode, usd } from "@/lib/format";
 import { store, usePoll } from "@/lib/hooks";
 import { happened, price } from "@/lib/promo-view";
 import { myPurchasesKey, type MyPurchase } from "@/lib/purchases";
@@ -46,7 +46,7 @@ export function MyPromos() {
 
   return (
     <CustomerShell>
-      <h1 className="font-display pb-5 pt-4 text-[40px]">My promos</h1>
+      <h1 className="font-display pb-5 pt-4 text-[34px]">My promos</h1>
       {!ready ? (
         <div className="rounded-[24px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
           <p className="font-title text-[19px]">Sign in to see your promos</p>
@@ -78,13 +78,15 @@ export function MyPromos() {
         </div>
       ) : (
         <div className="space-y-8">
-          <div className="grid grid-cols-2 gap-3">
-            <Stat value={usd(saved)} label="free so far" accent={saved > 0n} />
-            <Stat
-              value={String(server.length + pending.length)}
-              label={server.length + pending.length === 1 ? "promo" : "promos"}
-            />
-          </div>
+          {saved > 0n ? (
+            <div className="grid grid-cols-2 gap-3">
+              <Stat value={usd(saved)} label="free so far" accent />
+              <Stat
+                value={String(server.length + pending.length)}
+                label={server.length + pending.length === 1 ? "promo" : "promos"}
+              />
+            </div>
+          ) : null}
 
           {active.length + pending.length > 0 ? (
             <section>
@@ -178,7 +180,9 @@ function Row({ r }: { r: CustomerPurchaseDto }) {
             {s.text}
           </p>
         </div>
-        <span className="font-num shrink-0 text-[20px] text-ink-soft">#{r.orderCode}</span>
+        <span className="font-num shrink-0 text-[17px] text-ink-soft">
+          {displayCode(r.orderCode, r.purchasePda)}
+        </span>
       </Link>
     </li>
   );

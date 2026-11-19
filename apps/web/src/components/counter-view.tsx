@@ -6,7 +6,7 @@ import type { PurchaseSummaryDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { servedCodes, setServed } from "@/lib/coupons";
 import { describe } from "@/lib/errors";
-import { clock } from "@/lib/format";
+import { clock, displayCode } from "@/lib/format";
 import { useNowSeconds, useOrigin, usePoll } from "@/lib/hooks";
 import { condition, oddsPct, price, shortCountdown } from "@/lib/promo-view";
 import { IconBack, IconCheck } from "./icons";
@@ -122,7 +122,7 @@ export function CounterView({ promoId }: { promoId: string }) {
 
       <section aria-labelledby="orders" className="mt-8 min-w-0 lg:mt-[60px]">
         <div className="flex items-baseline justify-between gap-3">
-          <h1 id="orders" className="font-display text-[36px]">
+          <h1 id="orders" className="font-display text-[28px]">
             Orders
           </h1>
           <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-note">
@@ -165,7 +165,9 @@ export function CounterView({ promoId }: { promoId: string }) {
               {done.map((r) => (
                 <li key={r.purchasePda} className="flex items-center gap-3 px-4 py-3">
                   <IconCheck size={18} className="text-note" />
-                  <span className="font-num text-[22px]">#{r.orderCode}</span>
+                  <span className="font-num text-[22px]">
+                    {displayCode(r.orderCode, r.purchasePda)}
+                  </span>
                   <span className="text-[14px] text-ink-soft">{clock(r.depositedAt)}</span>
                   <button
                     type="button"
@@ -198,7 +200,9 @@ function OrderRow({
     return (
       <div className="flex items-center justify-between gap-4 rounded-[24px] bg-ribbon px-5 py-4 text-white">
         <div className="min-w-0">
-          <p className="font-display text-[54px] leading-none">#{r.orderCode}</p>
+          <p className="font-display text-[40px] leading-none lg:text-[54px]">
+            {displayCode(r.orderCode, r.purchasePda)}
+          </p>
           <p className="mt-1.5 text-[15px] text-white/85">
             {item}, paid {clock(r.depositedAt)}
           </p>
@@ -206,9 +210,9 @@ function OrderRow({
         <button
           type="button"
           onClick={onServed}
-          className="h-14 shrink-0 rounded-[18px] bg-white px-5 text-[17px] font-bold text-black transition-transform active:scale-[0.97]"
+          className="h-12 shrink-0 rounded-[16px] bg-white px-4 text-[16px] font-bold text-black transition-transform active:scale-[0.97]"
         >
-          Served
+          Mark served
         </button>
       </div>
     );
@@ -220,7 +224,7 @@ function OrderRow({
       <p
         className={`font-display text-[44px] leading-none ${refund ? "text-stamp" : "text-ink-soft"}`}
       >
-        #{r.orderCode}
+        {displayCode(r.orderCode, r.purchasePda)}
       </p>
       <p className="text-right text-[15px] font-semibold">
         {refund ? (

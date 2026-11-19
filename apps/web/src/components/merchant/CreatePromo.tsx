@@ -249,9 +249,9 @@ export function CreatePromo() {
           <span className="mx-auto grid h-16 w-16 animate-pop place-items-center rounded-full bg-ribbon text-white">
             <IconCheck size={32} />
           </span>
-          <h1 className="font-display mt-5 text-[38px]">It&apos;s live.</h1>
+          <h1 className="font-display mt-5 text-[34px]">It&apos;s live.</h1>
           <p className="mt-2 text-[16px] text-ink-soft">
-            {itemName}, free if {outcomeLabel}. Customers scan this to buy.
+            {itemName}, free if {outcomeLabel}.
           </p>
           <div className="mx-auto mt-6 w-[220px] overflow-hidden rounded-[22px] bg-white p-3">
             {origin ? (
@@ -260,6 +260,7 @@ export function CreatePromo() {
               <div className="aspect-square" />
             )}
           </div>
+          <p className="font-title mt-3 text-[17px]">Scan to buy</p>
           <div className="mt-6 space-y-3">
             <Link
               href={`/counter/${published}`}
@@ -281,10 +282,7 @@ export function CreatePromo() {
 
   return (
     <Frame>
-      <h1 className="font-display text-[38px]">New promo</h1>
-      <p className="mt-1.5 text-[15px] text-ink-soft">
-        Customers see this card. It updates as you type.
-      </p>
+      <h1 className="font-display text-[34px]">New promo</h1>
       <div className="mt-4" inert>
         <PromoCard p={preview} now={now} />
       </div>
@@ -325,7 +323,7 @@ export function CreatePromo() {
         </div>
       </Section>
 
-      <Section title="The game" hint="Customers get it free if this happens.">
+      <Section title="The game">
         <MarketPicker selected={picked} onPick={onPick} maxPct={maxPct} />
         {overMax && game ? (
           <div className="rounded-[18px] bg-surface-2 p-4 ring-1 ring-inset ring-rule">
@@ -399,7 +397,7 @@ export function CreatePromo() {
         ) : null}
       </Section>
 
-      <Section title="The odds" hint="Underdogs only: when it hits, your customers beat the odds.">
+      <Section title="Underdog limit" hint="Under 50% keeps it an underdog.">
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-[13.5px] text-ink-soft">Chance now</p>
@@ -408,7 +406,7 @@ export function CreatePromo() {
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[13.5px] text-ink-soft">Your max</p>
+            <p className="text-[13.5px] text-ink-soft">Max chance</p>
             <p className="font-num mt-1 text-[40px]">{maxPct}%</p>
           </div>
         </div>
@@ -421,40 +419,35 @@ export function CreatePromo() {
           aria-label="Max odds you will cover"
           className="w-full"
         />
-        <p className="text-[13.5px] text-ink-soft">
-          Sales pause if the chance climbs past your max. 49% keeps every promo an underdog.
-        </p>
+        <p className="text-[13.5px] text-ink-soft">Sales pause above your max.</p>
       </Section>
 
       <Section title="Coupons">
         <Stepper label="How many coupons" value={coupons} min={1} max={500} onChange={setCoupons} />
         <Stepper
-          label="Show “Selling out” at"
+          label="“Selling out” at left"
           value={sellingOutAt}
           min={1}
           max={Math.max(1, coupons)}
           onChange={setSellingOutAt}
-          suffix="left"
         />
       </Section>
 
-      <section className="mt-6 rounded-[24px] bg-hatch-soft p-5 ring-1 ring-inset ring-sim/25">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-[15px] font-semibold">Cost to cover one sale</p>
-          <p className="font-num text-[34px]">{perSale === null ? "–" : usd(perSale)}</p>
-        </div>
+      <section className="mt-6 rounded-[24px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
+        <p className="text-[15px] font-semibold text-ink-soft">Cost to cover one sale</p>
+        <p className="font-num mt-1.5 text-[44px]">{perSale === null ? "–" : usd(perSale)}</p>
         <dl className="mt-3 space-y-1.5 text-[14.5px]">
           <div className="flex justify-between gap-3">
             <dt className="text-ink-soft">Covering {coupons} coupons</dt>
             <dd className="font-semibold tabular-nums">{budget === null ? "–" : usd(budget)}</dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt className="text-ink-soft">You keep per sale, win or lose</dt>
+            <dt className="text-ink-soft">You keep on every sale</dt>
             <dd className="font-semibold tabular-nums">{keep === null ? "–" : usd(keep)}</dd>
           </div>
         </dl>
-        <p className="mt-3 text-[12.5px] text-sim">
-          Priced live from Gemini Predictions. Coverage is simulated; no order is placed.
+        <p className="mt-3 text-[12px] text-ink-faint">
+          Live price from Gemini. Simulated in this demo.
         </p>
       </section>
 

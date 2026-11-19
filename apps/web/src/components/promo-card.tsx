@@ -3,7 +3,15 @@
 import Link from "next/link";
 import type { PromotionDto } from "@/lib/api";
 import { couponSupply, type ServerCoupons } from "@/lib/coupons";
-import { condition, oddsPct, price, sellState, shortCountdown, stateText } from "@/lib/promo-view";
+import {
+  condition,
+  oddsPct,
+  price,
+  sellState,
+  shortCountdown,
+  stateText,
+  whenText,
+} from "@/lib/promo-view";
 import { HowItWorksButton } from "./how-it-works";
 import { IconClock } from "./icons";
 import { Meter, Odds, Perforation } from "./kit";
@@ -41,29 +49,23 @@ export function CouponsLeft({
           </span>
         ) : null}
       </div>
-      <Meter
-        value={s.left}
-        max={s.total}
-        hot={s.sellingOut}
-        className="mt-2 w-full max-w-[140px]"
-      />
+      <Meter value={s.left} max={s.total} hot={s.sellingOut} className="mt-2 w-24" />
     </div>
   );
 }
 
-/** "Kickoff Sat 2:30 PM" for games days out; "Sales close 4:55 PM" for today. */
+/** "Kickoff Sat 3:30 PM" for games days out; "Sales close 8:45 PM" for today. */
 export function closesText(deadline: number, now: number | null): string {
-  if (now !== null && deadline - now > 12 * 3600) {
-    const d = new Date(deadline * 1000);
-    return `Kickoff ${d.toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" })}`;
-  }
-  return `Sales close ${new Date(deadline * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+  return now !== null && deadline - now > 12 * 3600
+    ? `Kickoff ${whenText(deadline, now)}`
+    : `Sales close ${whenText(deadline, now)}`;
 }
 
 export function Countdown({ deadline, now }: { deadline: number; now: number | null }) {
   if (now === null) return null;
   const left = deadline - now;
-  if (left <= 0) return null;
+  // Only when it is close; further out, the card says when kickoff is.
+  if (left <= 0 || left > 3 * 3600) return null;
   const urgent = left < 3600;
   return (
     <span
@@ -111,7 +113,7 @@ export function PromoCard({
           <Seal seed={p.promoPda ?? p.id} size={compact ? 48 : 54} label={cost} />
           <div className="min-w-0 flex-1 pt-0.5">
             <h3
-              className={`font-title truncate leading-tight ${compact ? "text-[19px]" : "text-[21px]"}`}
+              className={`font-title line-clamp-2 leading-tight ${compact ? "text-[19px]" : "text-[21px]"}`}
             >
               {p.itemName}
             </h3>
@@ -119,7 +121,7 @@ export function PromoCard({
               {sub === "kickoff" ? closesText(p.depositDeadline, now) : p.shop.name}
             </p>
           </div>
-          <Odds pct={odds} size={compact ? 26 : 30} label="chance" className="shrink-0" />
+          <Odds pct={odds} size={compact ? 22 : 26} label="chance" className="shrink-0" />
         </div>
         <p
           className={`font-wide mt-3 font-bold leading-snug ${compact ? "text-[16px]" : "text-[18px]"}`}
@@ -146,8 +148,12 @@ export function PromoCard({
 
       <div className="relative flex min-h-[60px] items-center justify-between gap-3 px-4 py-3">
         <div className="pointer-events-none flex min-w-0 flex-1 items-center gap-3">
-          {selling || st.kind === "soldout" ? (
+          {(selling || st.kind === "soldout") && couponSupply(p) ? (
             <CouponsLeft p={p} />
+          ) : selling ? (
+            <p className="text-[13.5px] font-semibold text-ink-soft">
+              {closesText(p.depositDeadline, now)}
+            </p>
           ) : st.kind !== "won" ? (
             <p className="text-[14px] font-semibold text-ink-soft">{stateText(st, cond)}</p>
           ) : (

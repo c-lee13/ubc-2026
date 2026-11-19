@@ -14,7 +14,7 @@ export function Column({ children, className = "" }: { children: ReactNode; clas
 }
 
 /** The profile button: the signed-in person's initial, else a person icon. */
-export function ProfileButton() {
+export function ProfileButton({ balance = true }: { balance?: boolean }) {
   const w = useWallet();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -26,7 +26,7 @@ export function ProfileButton() {
       aria-label="Profile"
       className="flex h-10 items-center gap-2 rounded-full pl-1 pr-1 text-ink-2 transition-colors hover:text-ink"
     >
-      {ready ? (
+      {ready && balance ? (
         <span className="font-num pr-0.5 text-[17px] text-ink">{usd(w.wallet!.usdcBalance)}</span>
       ) : null}
       <span
@@ -40,7 +40,7 @@ export function ProfileButton() {
 
 export function TopBar({ right }: { right?: ReactNode }) {
   return (
-    <header className="sticky top-0 z-30 bg-black/85 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-rule/70 bg-paper/80 backdrop-blur-xl">
       <Column className="flex h-[60px] items-center justify-between px-4">
         <Link href="/" aria-label="Wincentive home">
           <Wordmark />
@@ -61,7 +61,7 @@ export function BottomTabs() {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-black/90 pb-safe backdrop-blur-md"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-rule/70 bg-paper/85 pb-safe backdrop-blur-xl"
     >
       <Column className="grid grid-cols-2">
         {TABS.map(({ href, label, Icon }) => {

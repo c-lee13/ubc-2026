@@ -6,9 +6,9 @@ import { ApiError, type PurchaseReceiptDto } from "@/lib/api";
 import { api, chain } from "@/lib/client";
 import { publicConfig } from "@/lib/config";
 import { describe, type Problem } from "@/lib/errors";
-import { clock, conditionText, dateTime, usd } from "@/lib/format";
+import { conditionText, displayCode, usd } from "@/lib/format";
 import { store, useNowSeconds, usePoll, useSeenFor } from "@/lib/hooks";
-import { happened, shortCountdown } from "@/lib/promo-view";
+import { happened, whenText } from "@/lib/promo-view";
 import {
   CANCEL_AFTER_SECS,
   PURCHASE_KEY,
@@ -112,10 +112,10 @@ function Receipt({
   const won = outcome === "YES" && !refunding;
   const lost = outcome === "NO" && !refunding;
   const processing = r.step === "PROCESSING";
-  const code = `#${r.orderCode || purchaseKey.slice(-4).toUpperCase()}`;
+  const code = displayCode(r.orderCode, purchaseKey);
 
   const head = won
-    ? { title: "It's free!", sub: `${happened(cond)}. ${cost} back in your balance.`, ribbon: true }
+    ? { title: "It's free.", sub: `${happened(cond)}.`, ribbon: true }
     : refunding
       ? {
           title: r.step === "REFUNDED" ? "Refunded" : "Money on its way back",
@@ -129,7 +129,7 @@ function Receipt({
             ribbon: false,
           }
         : processing
-          ? { title: "Locking it in", sub: "One moment while your payment confirms.", ribbon: true }
+          ? { title: "Confirming payment", sub: "This takes a few seconds.", ribbon: true }
           : { title: "You're in.", sub: `If ${cond}, it's free.`, ribbon: true };
 
   const steps: { key: string; state: StageState; title: string; body: string }[] = [
@@ -137,17 +137,17 @@ function Receipt({
       key: "paid",
       state: stages.paid,
       title: `Paid ${cost}`,
-      body: `${item} at ${r.promotion.shopName}`,
+      body: "From your balance",
     },
     {
       key: "covered",
       state: stages.covered,
-      title: refunding ? "Didn't go through" : "Locked in",
+      title: refunding ? "Didn't go through" : "Ready at the counter",
       body: refunding
         ? `Your ${cost} is being sent back`
         : stages.covered === "done"
-          ? "Show your code and grab your order"
-          : "Confirming with the shop",
+          ? "Show your code, grab your order"
+          : "Confirming payment",
     },
     {
       key: "result",
@@ -158,7 +158,7 @@ function Receipt({
           ? "Official result is in"
           : "Official result is in"
         : deadline && now !== null && deadline > now
-          ? `Kickoff in ${shortCountdown(deadline - now)}, ${deadline - now > 86_400 ? dateTime(deadline) : clock(deadline)}`
+          ? `Kickoff ${whenText(deadline, now)}`
           : "Waiting for the official result",
     },
     {
@@ -168,7 +168,9 @@ function Receipt({
         ? r.step === "REFUNDED"
           ? `${cost} refunded`
           : `${cost} on its way`
-        : `Free if ${cond}`,
+        : won
+          ? "Free"
+          : `Free if ${cond}`,
       body: won
         ? r.onChainState === "ClaimedByCustomer"
           ? `${cost} is back in your balance`
@@ -177,7 +179,7 @@ function Receipt({
           ? "Straight back to your balance"
           : lost
             ? "Better luck next game"
-            : `${cost} back to your balance right after the game`,
+            : `${cost} back after the game`,
     },
   ];
 
@@ -199,36 +201,35 @@ function Receipt({
           <p className={`mt-2 text-[16px] ${head.ribbon ? "text-white/85" : "text-ink-soft"}`}>
             {head.sub}
           </p>
-          {won ? (
-            <span
-              aria-hidden
-              className="absolute right-5 top-5 animate-stamp rounded-[10px] border-[3px] border-white/90 px-2.5 py-1 [--stamp-rot:-10deg]"
-              style={{ transform: "rotate(var(--stamp-rot))" }}
-            >
-              <span className="font-display block text-[20px] leading-none tracking-[0.06em] text-white">
-                FREE
-              </span>
-            </span>
-          ) : null}
         </div>
 
-        <div className="border-b border-rule px-6 py-6 text-center">
-          <p className="text-[13.5px] font-medium text-ink-soft">
-            {processing
-              ? "Your order code, almost ready"
-              : refunding
-                ? "Your order code"
-                : "Show this at the counter"}
-          </p>
-          <p
-            className={`font-display mt-2 text-[76px] leading-none ${processing || refunding ? "text-ink-faint" : ""}`}
-          >
-            {code}
-          </p>
-          <p className="mt-2 text-[15px] text-ink-soft">
-            {item}, {r.promotion.shopName}
-          </p>
-        </div>
+        {won ? (
+          <div className="border-b border-rule px-6 py-7 text-center">
+            <p className="font-num text-ribbon inline-block pb-1 text-[80px]">+{cost}</p>
+            <p className="mt-1 text-[15px] text-ink-soft">
+              back in your balance, for your {item.toLowerCase()} at {r.promotion.shopName}
+            </p>
+            <p className="mt-3 text-[13.5px] text-ink-faint">Order {code}</p>
+          </div>
+        ) : (
+          <div className="border-b border-rule px-6 py-6 text-center">
+            <p className="text-[13.5px] font-medium text-ink-soft">
+              {processing
+                ? "Your order code, almost ready"
+                : refunding
+                  ? "Your order code"
+                  : "Show this at the counter"}
+            </p>
+            <p
+              className={`font-display mt-2 text-[64px] leading-none ${processing || refunding ? "text-ink-faint" : ""}`}
+            >
+              {code}
+            </p>
+            <p className="mt-2 text-[15px] text-ink-soft">
+              {item}, {r.promotion.shopName}
+            </p>
+          </div>
+        )}
 
         <ol className="px-6 py-5">
           {steps

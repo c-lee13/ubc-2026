@@ -1,5 +1,5 @@
 /** The hero's rotating word. */
-export const HERO_WORDS = ["coffee", "beer", "tacos", "cold brew", "kolaches", "latte"];
+export const HERO_WORDS = ["coffee", "beer", "taco", "latte", "cold brew", "pint"];
 
 /** "Latte" -> "a latte", "Taco plate" -> "a taco plate", "Pint of Lone Star" -> "a pint of Lone Star". */
 export function withArticle(item: string): string {

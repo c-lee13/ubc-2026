@@ -99,7 +99,9 @@ export function Voucher(props: VoucherProps) {
               <span className="font-display text-[12.5cqw] leading-none tracking-[-0.04em] @min-[420px]:text-[6.6cqw]">
                 {dollars}
               </span>
-              <span className="mt-[0.6cqw] text-[3.1cqw] font-semibold text-note @min-[420px]:text-[1.55cqw]">
+              <span
+                className={`mt-[0.6cqw] font-semibold text-note ${props.plain ? "text-[3.6cqw] @min-[420px]:text-[2.6cqw]" : "text-[3.1cqw] @min-[420px]:text-[1.55cqw]"}`}
+              >
                 back
               </span>
             </div>
@@ -108,9 +110,15 @@ export function Voucher(props: VoucherProps) {
           {/* Terms */}
           <div className="flex min-w-0 flex-col justify-between pt-[3cqw] @min-[420px]:pt-[0.4cqw]">
             <div className="flex items-baseline justify-between gap-[2cqw]">
-              <span className="font-wide truncate text-[3.9cqw] font-bold text-ink-soft @min-[420px]:text-[2.05cqw]">
-                {props.shopName}
-              </span>
+              {props.plain ? (
+                <span className="font-display truncate text-[9cqw] leading-none @min-[420px]:text-[6.6cqw]">
+                  {props.itemName}
+                </span>
+              ) : (
+                <span className="font-wide truncate text-[3.9cqw] font-bold text-ink-soft @min-[420px]:text-[2.05cqw]">
+                  {props.shopName}
+                </span>
+              )}
               {props.plain ? null : (
                 <span className="shrink-0 font-mono text-[2.7cqw] text-ink-faint @min-[420px]:text-[1.25cqw]">
                   {props.sample
@@ -121,11 +129,15 @@ export function Voucher(props: VoucherProps) {
                 </span>
               )}
             </div>
-            <p className="font-display my-[2.5cqw] text-[8.4cqw] text-balance @min-[420px]:my-0 @min-[420px]:text-[5cqw]">
+            <p
+              className={`my-[2.5cqw] text-balance @min-[420px]:my-0 ${props.plain ? "font-wide text-[6.4cqw] font-bold leading-tight @min-[420px]:text-[4.4cqw]" : "font-display text-[8.4cqw] @min-[420px]:text-[5cqw]"}`}
+            >
               {props.headline ?? `Your ${dollars} back if ${props.condition}.`}
             </p>
             <div className="space-y-[1.2cqw]">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-[3cqw] gap-y-[0.5cqw] border-t border-ink/20 pt-[1.6cqw] text-[3.6cqw] @min-[420px]:pt-[1.1cqw] @min-[420px]:text-[1.7cqw]">
+              <div
+                className={`flex flex-wrap items-baseline justify-between gap-x-[3cqw] gap-y-[0.5cqw] border-t border-ink/20 pt-[1.6cqw] @min-[420px]:pt-[1.1cqw] ${props.plain ? "text-[3.9cqw] @min-[420px]:text-[2.9cqw]" : "text-[3.6cqw] @min-[420px]:text-[1.7cqw]"}`}
+              >
                 <span>{props.terms ?? `Pay ${dollars} for a ${props.itemName.toLowerCase()}`}</span>
                 {props.closesLabel ? (
                   <span className="text-ink-soft">{props.closesLabel}</span>
@@ -245,12 +257,17 @@ export function Seal({ seed, size = 44, label }: { seed: string; size?: number; 
             <path key={i} d={d} />
           ))}
         </g>
-        <circle r={44} fill="var(--color-paper-raised)" stroke={`url(#${gid})`} strokeWidth={3} />
+        <circle
+          r={label && label.length > 3 ? 60 : 44}
+          fill="var(--color-paper-raised)"
+          stroke={`url(#${gid})`}
+          strokeWidth={3}
+        />
       </svg>
       {label ? (
         <span
           className="font-display relative leading-none tracking-[-0.03em]"
-          style={{ fontSize: Math.round(size * (label.length > 3 ? 0.2 : 0.25)) }}
+          style={{ fontSize: Math.round(size * (label.length > 3 ? 0.19 : 0.25)) }}
         >
           {label}
         </span>

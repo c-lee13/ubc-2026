@@ -10,7 +10,7 @@ import { Button, INPUT, Note, Spinner } from "./kit";
  */
 export function LoginCard({
   cta = "Continue",
-  hint = "We'll email you a 6-digit code. No app needed.",
+  hint = "We'll email you a code.",
 }: {
   cta?: string;
   hint?: string | null;

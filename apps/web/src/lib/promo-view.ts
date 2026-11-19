@@ -19,6 +19,7 @@ export function happened(cond: string): string {
     .replace(/\bwins\b/, "won")
     .replace(/\bwin\b/, "won")
     .replace(/\bcloses\b/, "closed")
+    .replace(/\bis up\b/, "was up")
     .replace(/\bscores\b/, "scored")
     .replace(/\bbeats\b/, "beat");
 }
@@ -31,6 +32,14 @@ export function shortCountdown(seconds: number): string {
   if (s < 86_400)
     return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m`;
   return `${Math.floor(s / 86_400)}d`;
+}
+
+/** "8:45 PM" for today (or within 12 hours), "Sat 3:30 PM" further out. */
+export function whenText(unix: number, now: number | null): string {
+  const d = new Date(unix * 1000);
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  if (now !== null && unix - now <= 12 * 3600) return time;
+  return `${d.toLocaleDateString("en-US", { weekday: "short" })} ${time}`;
 }
 
 /** "$5" for whole dollars, "$4.50" otherwise. */

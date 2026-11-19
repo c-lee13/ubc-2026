@@ -33,9 +33,6 @@ export function RolePick({ onPick }: { onPick: (r: Role) => void }) {
             title="I run a shop"
             sub="Start a promo for your customers"
           />
-          <p className="pt-2 text-center text-[13px] text-ink-faint">
-            You can switch anytime in your profile.
-          </p>
         </div>
       </div>
     </main>

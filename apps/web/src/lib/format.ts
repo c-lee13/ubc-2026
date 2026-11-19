@@ -132,7 +132,8 @@ export function marketMeaning(marketId: string): MarketMeaning {
 /** The condition clause: "SOL closes up", "Texas wins", or the stored label. */
 export function conditionText(outcomeLabel: string, marketId: string): string {
   const m = marketMeaning(marketId);
-  if (m.kind === "UP_DOWN" && /up/i.test(outcomeLabel)) return `${m.asset} closes up`;
+  if (m.kind === "UP_DOWN" && /up/i.test(outcomeLabel) && m.closesAt !== undefined)
+    return `${m.asset === "SOL" ? "Solana" : m.asset} is up at ${clock(m.closesAt)}`;
   return outcomeLabel;
 }
 
@@ -151,6 +152,15 @@ export function seedOf(s: string): number {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
+}
+
+/**
+ * The order code people see: the API's 4-character `orderCode` (hex) as a plain number, "#04821".
+ * One to one (16 bits -> 5 digits), and the receipt and the counter both use it, so they match.
+ */
+export function displayCode(orderCode: string | null | undefined, purchaseKey?: string): string {
+  const raw = (orderCode || purchaseKey?.slice(-4) || "").toUpperCase();
+  return /^[0-9A-F]{4}$/.test(raw) ? `#${String(parseInt(raw, 16)).padStart(5, "0")}` : `#${raw}`;
 }
 
 /** Short order number a barista can match by eye: "#3AC3" from a purchase key or address. */
