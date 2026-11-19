@@ -129,19 +129,21 @@ function Offer({ p, now }: { p: Promo; now: number | null }) {
       />
 
       <section className="mt-5 rounded-[28px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
-        <div className="flex items-start justify-between gap-4">
-          <Odds pct={oddsPct(p.live?.liveAskMicroUsd)} size={54} align="left" />
-          {st.kind === "selling" && left !== null && left > 0 ? (
-            <div className="text-right">
-              <span className="font-num block text-[54px]">{shortCountdown(left)}</span>
-              <span className="mt-1 block text-[12.5px] font-medium text-ink-soft">
-                left to buy
-              </span>
-            </div>
-          ) : null}
-        </div>
-        {st.kind === "selling" ? <CouponsLeft p={p} className="mt-5" /> : null}
-        <div className="mt-5 border-t border-rule pt-5">
+        {st.kind === "selling" || st.kind === "paused" || st.kind === "soldout" ? (
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <Odds pct={oddsPct(p.live?.liveAskMicroUsd)} size={54} align="left" />
+            {st.kind === "selling" && left !== null && left > 0 ? (
+              <div className="text-right">
+                <span className="font-num block text-[54px]">{shortCountdown(left)}</span>
+                <span className="mt-1 block text-[12.5px] font-medium text-ink-soft">
+                  left to buy
+                </span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {st.kind === "selling" ? <CouponsLeft p={p} className="mb-5" /> : null}
+        <div className="border-t border-rule pt-5 first:border-t-0 first:pt-0">
           <PayPanel promo={p} cond={cond} now={now} />
         </div>
       </section>

@@ -161,6 +161,11 @@ const hex = (bytes: number) =>
     b.toString(16).padStart(2, "0"),
   ).join("");
 const fakeHash = () => `0x${hex(32)}`;
+/** A v4 UUID without crypto.randomUUID, which only exists on https or localhost (phone previews use a LAN IP). */
+const uuid = () => {
+  const h = hex(16);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+};
 const nowS = () => Math.floor(Date.now() / 1000);
 
 /* ---------- the stand-in Circle driver ---------- */
@@ -586,7 +591,7 @@ export function createFixtureTransport(real: Transport): Transport {
       shop.initialized = true;
       const nonce = BigInt(`0x${hex(7)}`);
       s.promos.push({
-        id: crypto.randomUUID(),
+        id: uuid(),
         status: "ACTIVE",
         promoPda: promoIdOf(shop.address as Address, nonce),
         promoNonce: nonce.toString(),
@@ -614,7 +619,7 @@ export function createFixtureTransport(real: Transport): Transport {
     const found = Object.values(s.wallets).find((w) => w.email === email.toLowerCase());
     if (found) return found;
     const w: FxWallet = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       email: email.toLowerCase(),
       address: `0x${hex(20)}`,
       balance: "0",
@@ -627,7 +632,7 @@ export function createFixtureTransport(real: Transport): Transport {
   }
 
   function challenge(s: FxState, kind: FxChallenge["kind"], walletId: string, ref: string[]) {
-    const id = crypto.randomUUID();
+    const id = uuid();
     s.challenges[id] = { id, kind, walletId, ref };
     return id;
   }
@@ -916,7 +921,7 @@ export function createFixtureTransport(real: Transport): Transport {
       const input = body as unknown as CreatePromotionInput;
       const nonce = BigInt(`0x${hex(7)}`);
       const promo: FxPromo = {
-        id: crypto.randomUUID(),
+        id: uuid(),
         status: "DRAFT",
         promoPda: promoIdOf(input.merchant as Address, nonce),
         promoNonce: nonce.toString(),

@@ -136,7 +136,7 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
 
               <div className="mt-5 grid grid-cols-3 gap-2.5">
                 <Stat value={String(totals.hedged)} label="coupons sold" />
-                <Stat value={usd(sales).replace(/\.00$/, "")} label="in sales" />
+                <Stat value={compactUsd(sales)} label="in sales" />
                 <Stat
                   value={String(totals.open)}
                   label={totals.open === 1 ? "live promo" : "live promos"}
@@ -238,6 +238,12 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
       <EditSheet promo={editing} onClose={() => setEditing(null)} />
     </>
   );
+}
+
+/** "$98", "$1.2k": whole dollars for the stat tiles. */
+function compactUsd(base: bigint): string {
+  const d = Number(base) / 1_000_000;
+  return d >= 1000 ? `$${(d / 1000).toFixed(1).replace(/\.0$/, "")}k` : `$${Math.round(d)}`;
 }
 
 function Stat({ value, label, accent }: { value: string; label: string; accent?: boolean }) {

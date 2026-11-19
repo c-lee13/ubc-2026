@@ -22,7 +22,6 @@ import {
 import { useWallet } from "@/lib/wallet/session";
 import { IconCheck, IconClose } from "../icons";
 import { Button, Mark, Note, Spinner } from "../kit";
-import { Stamp } from "../voucher";
 
 // The live receipt (Dylan's prototype receipt: ribbon header with the order code, a timeline with
 // pink checks), upside-only words. Polls GET /api/purchases/:key (docs/FRONTEND-API.md "Receipt").
@@ -157,7 +156,7 @@ function Receipt({
       body: outcome
         ? won
           ? "Official result is in"
-          : `${cond.replace(/s$/, "")} didn't happen this time`
+          : "Official result is in"
         : deadline && now !== null && deadline > now
           ? `Kickoff in ${shortCountdown(deadline - now)}, ${deadline - now > 86_400 ? dateTime(deadline) : clock(deadline)}`
           : "Waiting for the official result",
@@ -200,15 +199,29 @@ function Receipt({
           <p className={`mt-2 text-[16px] ${head.ribbon ? "text-white/85" : "text-ink-soft"}`}>
             {head.sub}
           </p>
-          {won && r.onChainState === "ClaimedByCustomer" ? <Stamp text="FREE" tone="ink" /> : null}
+          {won ? (
+            <span
+              aria-hidden
+              className="absolute right-5 top-5 animate-stamp rounded-[10px] border-[3px] border-white/90 px-2.5 py-1 [--stamp-rot:-10deg]"
+              style={{ transform: "rotate(var(--stamp-rot))" }}
+            >
+              <span className="font-display block text-[20px] leading-none tracking-[0.06em] text-white">
+                FREE
+              </span>
+            </span>
+          ) : null}
         </div>
 
         <div className="border-b border-rule px-6 py-6 text-center">
           <p className="text-[13.5px] font-medium text-ink-soft">
-            {processing ? "Your order code, almost ready" : "Show this at the counter"}
+            {processing
+              ? "Your order code, almost ready"
+              : refunding
+                ? "Your order code"
+                : "Show this at the counter"}
           </p>
           <p
-            className={`font-display mt-2 text-[76px] leading-none ${processing ? "text-ink-faint" : ""}`}
+            className={`font-display mt-2 text-[76px] leading-none ${processing || refunding ? "text-ink-faint" : ""}`}
           >
             {code}
           </p>
@@ -218,25 +231,27 @@ function Receipt({
         </div>
 
         <ol className="px-6 py-5">
-          {steps.map((s, i) => (
-            <li key={s.key} className="relative flex gap-4 pb-5 last:pb-0">
-              {i < steps.length - 1 ? (
-                <span
-                  aria-hidden
-                  className={`absolute left-[15px] top-8 h-[calc(100%-28px)] w-0.5 ${s.state === "done" ? "bg-note/60" : "bg-rule"}`}
-                />
-              ) : null}
-              <Dot state={s.state} n={i + 1} />
-              <div className="min-w-0 pt-1">
-                <p
-                  className={`font-semibold ${s.state === "todo" || s.state === "skipped" ? "text-ink-faint" : "text-ink"}`}
-                >
-                  {s.title}
-                </p>
-                <p className="text-[14px] text-ink-soft">{s.body}</p>
-              </div>
-            </li>
-          ))}
+          {steps
+            .filter((s) => !(refunding && s.key === "result"))
+            .map((s, i, shown) => (
+              <li key={s.key} className="relative flex gap-4 pb-5 last:pb-0">
+                {i < shown.length - 1 ? (
+                  <span
+                    aria-hidden
+                    className={`absolute left-[15px] top-8 h-[calc(100%-28px)] w-0.5 ${s.state === "done" ? "bg-note/60" : "bg-rule"}`}
+                  />
+                ) : null}
+                <Dot state={s.state} n={i + 1} />
+                <div className="min-w-0 pt-1">
+                  <p
+                    className={`font-semibold ${s.state === "todo" || s.state === "skipped" ? "text-ink-faint" : "text-ink"}`}
+                  >
+                    {s.title}
+                  </p>
+                  <p className="text-[14px] text-ink-soft">{s.body}</p>
+                </div>
+              </li>
+            ))}
         </ol>
 
         <ClaimPanel r={r} purchaseKey={purchaseKey} cost={cost} onClaimed={onClaimed} />

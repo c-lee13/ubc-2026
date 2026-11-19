@@ -116,8 +116,8 @@ export function Profile() {
               <button
                 type="button"
                 onClick={() => {
-                  void navigator.clipboard?.writeText(w.wallet!.address);
-                  setCopied(true);
+                  if (!navigator.clipboard) return;
+                  void navigator.clipboard.writeText(w.wallet!.address).then(() => setCopied(true));
                   setTimeout(() => setCopied(false), 1500);
                 }}
                 className="flex w-full items-center gap-3.5 px-4 py-4 text-left hover:bg-surface-2"
