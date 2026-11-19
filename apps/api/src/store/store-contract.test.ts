@@ -130,6 +130,9 @@ function contract(name: string, store: Store) {
       false,
     );
     assert.equal((await store.listPurchases(promo.id)).length, 1);
+    const mine = await store.listPurchasesByCustomer(ev.customer, 10);
+    assert.ok(mine.some((p) => p.purchasePda === pda));
+    assert.equal((await store.listPurchasesByCustomer(tag("NOBODY"), 10)).length, 0);
 
     const leased = await store.transitionPurchase(pda, ["DEPOSITED"], "PENDING_HEDGE");
     assert.equal(leased?.status, "PENDING_HEDGE");

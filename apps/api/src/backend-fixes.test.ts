@@ -196,3 +196,32 @@ test("netting demo: two shops on opposite sides, live-priced, nothing stored", a
   assert.equal((await app.inject({ url: "/api/desk/demo?event=bad!" })).statusCode, 400);
   await app.close();
 });
+
+test("CORS: several comma-separated origins are allowed, others are not", async () => {
+  const config = loadConfig({ API_CORS_ORIGIN: "http://localhost:3000, https://app.example.com/" });
+  assert.deepEqual(config.corsOrigin, ["http://localhost:3000", "https://app.example.com"]);
+  const app = await buildServer(config, {
+    store: new MemoryStore(),
+    gateway: null,
+    gemini: gemini({}),
+  });
+  app.log.level = "silent";
+  const pre = (origin: string) =>
+    app.inject({
+      method: "OPTIONS",
+      url: "/api/wallet",
+      headers: {
+        origin,
+        "access-control-request-method": "GET",
+        "access-control-request-headers": "x-user-token",
+      },
+    });
+  const ok = await pre("https://app.example.com");
+  assert.equal(ok.headers["access-control-allow-origin"], "https://app.example.com");
+  assert.match(String(ok.headers["access-control-allow-headers"]), /x-user-token/i);
+  assert.equal(
+    (await pre("https://evil.example")).headers["access-control-allow-origin"],
+    undefined,
+  );
+  await app.close();
+});

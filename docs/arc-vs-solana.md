@@ -6,7 +6,8 @@ and stays the fallback; nothing on `main` changes until the team picks a chain.
 ## What changed
 
 - `contracts/arc/`: `HedgedEscrow.sol`, a one-to-one Solidity port of `programs/escrow` (same 12
-  operations, states, pause matrix, errors, events). 91 Foundry tests.
+  operations, states, pause matrix, errors, events). 91 Foundry tests (v2 on branch
+  `arc-contract-v2`: auto payouts, VOID, one-signature checkout; 120 tests; see packages/arc/README).
 - `packages/arc/`: the Arc twin of `packages/solana` (browser-safe SDK + server `ArcGateway`
   implementing the same `SolanaServerGateway`, QuickNode Streams filter + webhook, scripts).
 - `apps/api` (Rachel's path, needs her review): `SOLANA_GATEWAY=arc` accepted in `config.ts`, and

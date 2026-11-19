@@ -1,4 +1,5 @@
 import type {
+  ClaimKind,
   Commitment,
   OnChainConfig,
   OnChainPromoAccount,
@@ -10,7 +11,18 @@ import { erc20Abi, type Address, type BlockTag, type Hex, type PublicClient } fr
 import { HEDGED_ESCROW_ABI } from "./abi";
 import { fromBytes16 } from "./ids";
 
-export const PROMO_STATES: readonly OnChainPromoState[] = ["Active", "ResolvedYes", "ResolvedNo"];
+/**
+ * Arc promo states: the shared three plus v2's `ResolvedVoid` (event cancelled / market voided).
+ * `@hedged/shared`'s `OnChainPromoState` does not list "ResolvedVoid" yet (README: "Shared/backend
+ * changes needed"), so Arc reads use this wider type.
+ */
+export type ArcPromoState = OnChainPromoState | "ResolvedVoid";
+export const PROMO_STATES: readonly ArcPromoState[] = [
+  "Active",
+  "ResolvedYes",
+  "ResolvedNo",
+  "ResolvedVoid",
+];
 export const PURCHASE_STATES: readonly OnChainPurchaseState[] = [
   "Deposited",
   "Hedged",
@@ -24,8 +36,11 @@ export const PURCHASE_STATES: readonly OnChainPurchaseState[] = [
 export const blockTagFor = (c: Commitment | undefined): BlockTag =>
   c === "confirmed" ? "latest" : "finalized";
 
-/** Arc promo: the Solana shape plus the per-promo cancel-timeout snapshot. */
-export type ArcPromoAccount = OnChainPromoAccount & { cancelTimeoutSecs: number };
+/** Arc promo: the Solana shape plus the per-promo cancel-timeout snapshot; state may be ResolvedVoid. */
+export type ArcPromoAccount = Omit<OnChainPromoAccount, "state"> & {
+  state: ArcPromoState;
+  cancelTimeoutSecs: number;
+};
 export type ArcConfig = OnChainConfig & { cancelTimeoutSecs: number };
 
 export async function getConfig(
@@ -93,7 +108,7 @@ export async function getPromoState(
     offerAmount: p.offerAmount.toString(),
     depositDeadline: Number(p.depositDeadline),
     marketId: p.marketId,
-    state: PROMO_STATES[p.state] ?? "Active",
+    state: promoStateAt(p.state),
     resolvedAt: Number(p.resolvedAt),
     totalDeposited: p.totalDeposited.toString(),
     totalPaidOut: p.totalPaidOut.toString(),
@@ -103,6 +118,19 @@ export async function getPromoState(
     vaultBalance: vaultBalance.toString(),
     cancelTimeoutSecs: Number(p.cancelTimeoutSecs),
   };
+}
+
+function promoStateAt(i: number): ArcPromoState {
+  const st = PROMO_STATES[i];
+  // Never default an unknown state to "Active": that would invite a second resolution attempt.
+  if (!st) throw new Error(`unknown on-chain promo state ${i} (ABI out of date?)`);
+  return st;
+}
+
+function purchaseStateAt(i: number): OnChainPurchaseState {
+  const st = PURCHASE_STATES[i];
+  if (!st) throw new Error(`unknown on-chain purchase state ${i} (ABI out of date?)`);
+  return st;
 }
 
 type RawPurchase = {
@@ -125,7 +153,7 @@ export function mapPurchase(purchaseKey: Hex, u: RawPurchase): OnChainPurchaseAc
     customer: u.customer,
     purchaseId: fromBytes16(u.purchaseId),
     amount: u.amount.toString(),
-    state: PURCHASE_STATES[u.state] ?? "Deposited",
+    state: purchaseStateAt(u.state),
     depositedAt: Number(u.depositedAt),
     hedgedAt: Number(u.hedgedAt),
     cancelledAt: Number(u.cancelledAt),
@@ -191,4 +219,67 @@ export async function listPurchases(
     });
   }
   return out;
+}
+
+/** v2 `previewSettlement` statuses, in contract order. */
+export const SETTLE_STATUSES = [
+  "Payable",
+  "NotFound",
+  "AlreadySettled",
+  "NotDue",
+  "Paused",
+] as const;
+export type SettleStatus = (typeof SETTLE_STATUSES)[number];
+
+export interface SettlementPreview {
+  purchasePda: Hex;
+  status: SettleStatus;
+  /** Who an automatic settlement pays (meaningful when Payable or Paused). */
+  recipient: Address;
+  amount: string;
+  kind: ClaimKind;
+}
+
+/** What `settlePurchase` would do for this purchase right now (v2 contracts only). */
+export async function previewSettlement(
+  client: PublicClient,
+  escrow: Address,
+  purchaseKey: Hex,
+  commitment?: Commitment,
+): Promise<SettlementPreview> {
+  const [status, recipient, amount, kind] = await client.readContract({
+    address: escrow,
+    abi: HEDGED_ESCROW_ABI,
+    functionName: "previewSettlement",
+    args: [purchaseKey],
+    blockTag: blockTagFor(commitment),
+  });
+  return {
+    purchasePda: purchaseKey,
+    status: SETTLE_STATUSES[status] ?? "NotFound",
+    recipient,
+    amount: amount.toString(),
+    kind: CLAIM_KIND_NAMES[kind] ?? "CANCEL_REFUND",
+  };
+}
+
+/** Contract `ClaimKind` order (unchanged in v2: a VOID merchant payout is MERCHANT_PAYOUT). */
+export const CLAIM_KIND_NAMES: readonly ClaimKind[] = [
+  "CANCEL_REFUND",
+  "YES_REFUND",
+  "MERCHANT_PAYOUT",
+];
+
+/** True when the escrow at `escrow` is v2 (auto settlement, VOID, one-signature checkout). */
+export async function isEscrowV2(client: PublicClient, escrow: Address): Promise<boolean> {
+  try {
+    await client.readContract({
+      address: escrow,
+      abi: HEDGED_ESCROW_ABI,
+      functionName: "MAX_SETTLE_BATCH",
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

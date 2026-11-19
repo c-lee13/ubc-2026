@@ -51,9 +51,20 @@ export interface Logger {
   error(obj: object, msg: string): void;
 }
 
+/**
+ * v2 Arc escrow: push payouts instead of waiting for the customer / shop to claim. The contract
+ * decides who is paid; the resulting ClaimEvents are recorded by `handleClaim` as usual.
+ */
+export interface Settler {
+  settlePurchase(purchasePda: string): Promise<unknown>;
+  settlePromotion(promoPda: string): Promise<{ settled: string[]; skipped: unknown[] }>;
+}
+
 export interface OrchestratorDeps {
   store: Store;
   gateway: SolanaServerGateway;
+  /** Present only on a v2 Arc escrow (automatic payouts). */
+  settler?: Settler | null;
   gemini: Pick<GeminiAdapter, "getQuote" | "getOutcome">;
   config: OrchestratorConfig;
   now?: () => Date;
@@ -71,6 +82,8 @@ const UNRESOLVED: readonly PurchaseStatus[] = [
   "CANCEL_PENDING",
 ];
 const LIVE_HEDGE = new Set(["SIMULATED_FILLED", "SIMULATED_PARTIAL"]);
+/** Entitled to a payout that has not been paid yet (v2 pays these automatically). */
+const UNPAID = new Set<PurchaseStatus>(["CANCELLED", "RESOLVED"]);
 
 const noopLog: Logger = { info() {}, warn() {}, error() {} };
 
@@ -79,6 +92,7 @@ class NoHedge extends Error {}
 
 export function createOrchestrator(deps: OrchestratorDeps) {
   const { store, gateway, gemini, config } = deps;
+  const settler = deps.settler ?? null;
   const now = deps.now ?? (() => new Date());
   const nowUnix = () => Math.floor(now().getTime() / 1000);
   const log = deps.log ?? noopLog;
@@ -354,13 +368,14 @@ export function createOrchestrator(deps: OrchestratorDeps) {
       const receipt = await submitWithReread(p.purchasePda, "Cancelled", () =>
         gateway.cancelUnhedged(p.purchasePda),
       );
-      return (
+      const moved =
         (await store.transitionPurchase(p.purchasePda, ["CANCEL_PENDING"], "CANCELLED", {
           onChainState: "Cancelled",
           cancelTxSignature: receipt.signature,
           lastError: p.lastError,
-        })) !== null
-      );
+        })) !== null;
+      if (moved) await autoSettle(p.purchasePda);
+      return moved;
     } catch (err) {
       const chain = await readPurchase(p.purchasePda).catch(() => null);
       if (chain && chain.state !== "Deposited") return alignFromChain(p, chain);
@@ -474,6 +489,31 @@ export function createOrchestrator(deps: OrchestratorDeps) {
   ): Promise<void> {
     await store.setPromotionResolved(promo.id, outcome, signature);
     await settleResolvedPurchases(promo.id, outcome, resolvedAtIso);
+    await autoSettlePromotion(promo);
+  }
+
+  /** v2: pay one purchase now (refund after a cancel). Best effort; the sweep retries. */
+  async function autoSettle(purchasePda: Base58): Promise<void> {
+    if (!settler) return;
+    try {
+      await retry(() => settler.settlePurchase(purchasePda), gatewayRetryable);
+    } catch (err) {
+      log.warn({ purchase: purchasePda, err: String(err) }, "automatic payout failed; will retry");
+    }
+  }
+
+  /** v2: pay every payable purchase of a resolved promo. Best effort; the sweep retries. */
+  async function autoSettlePromotion(promo: PromotionRow): Promise<void> {
+    if (!settler || !promo.promoPda) return;
+    try {
+      const r = await retry(() => settler.settlePromotion(pdaOf(promo)), gatewayRetryable);
+      log.info(
+        { promo: promo.promoPda, settled: r.settled.length, skipped: r.skipped.length },
+        "automatic payouts sent",
+      );
+    } catch (err) {
+      log.warn({ promo: promo.promoPda, err: String(err) }, "automatic payouts failed; will retry");
+    }
   }
 
   /**
@@ -552,7 +592,13 @@ export function createOrchestrator(deps: OrchestratorDeps) {
     }
     if (promo.resolvedOutcome) {
       await settleResolvedPurchases(promo.id, promo.resolvedOutcome, now().toISOString());
+      if (settler && (await store.listPurchases(promo.id)).some((p) => UNPAID.has(p.status))) {
+        await autoSettlePromotion(promo);
+      }
     } else {
+      for (const p of await store.listPurchases(promotionId)) {
+        if (settler && p.status === "CANCELLED") await autoSettle(p.purchasePda);
+      }
       for (const p of await store.listPurchases(promotionId)) {
         if (UNRESOLVED.includes(p.status)) {
           await processPurchase(p.purchasePda).catch((err: unknown) =>
@@ -571,7 +617,8 @@ export function createOrchestrator(deps: OrchestratorDeps) {
   async function needsSweep(promo: PromotionRow): Promise<boolean> {
     if (promo.status !== "ACTIVE") return false;
     if (!promo.resolvedOutcome) return true;
-    const pending = new Set<PurchaseStatus>([...UNRESOLVED, "HEDGED"]);
+    // With automatic payouts, keep sweeping until everything is paid out.
+    const pending = new Set<PurchaseStatus>([...UNRESOLVED, "HEDGED", ...(settler ? UNPAID : [])]);
     return (await store.listPurchases(promo.id)).some((p) => pending.has(p.status));
   }
 

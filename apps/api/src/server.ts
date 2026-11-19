@@ -19,6 +19,8 @@ import { circleMerchantCheck, registerCircleRoutes, type CircleRouteDeps } from 
 export interface ServerDeps {
   /** Circle email-login wallets + Arc checkout; routes answer 503 when absent. */
   wallets?: Omit<CircleRouteDeps, "store" | "gemini">;
+  /** v2 escrow with our relayer: payouts are pushed, so receipts say "on its way", not "claim". */
+  autoPayout?: boolean;
   /** QuickNode Streams webhook target; POST /webhooks/quicknode returns 503 when absent. */
   streams?: StreamsWebhookDeps | null;
   /** Exposure desk; GET /api/desk returns 503 when absent. */
@@ -45,7 +47,7 @@ export async function buildServer(config: ApiConfig, deps: ServerDeps): Promise<
       ? circleMerchantCheck(deps.wallets.circle, deps.wallets.arc?.blockchain ?? "ARC-TESTNET")
       : undefined,
   });
-  registerPurchaseRoutes(app, { store: deps.store });
+  registerPurchaseRoutes(app, { store: deps.store, autoPayout: deps.autoPayout ?? false });
   await registerStreamsWebhook(app, deps.streams ?? null);
   registerCircleRoutes(app, {
     circle: deps.wallets?.circle ?? null,

@@ -18,6 +18,8 @@ contract Handler is TestBase {
     mapping(bytes32 => uint256) public paidCount; // per purchase payouts observed
     uint256 public ghostPaid;
     uint256 public ghostDeposited;
+    uint256 public ghostSignedDeposits; // v2 coverage counters
+    uint256 public ghostAutoPaid;
     uint64 internal nonce;
 
     constructor(HedgedEscrow e, MockUSDC u, address r, address[3] memory c, address[2] memory m) {
@@ -77,11 +79,84 @@ contract Handler is TestBase {
         try esc.cancelExpiredDeposit(k) {} catch {}
     }
 
-    function resolve(uint256 pi, bool yes) external {
+    function resolve(uint256 pi, uint8 outcome) external {
         if (promos.length == 0) return;
         vm.prank(relayer);
-        try esc.resolvePromo(promos[pi % promos.length], yes ? HedgedEscrow.Outcome.Yes : HedgedEscrow.Outcome.No) {}
-            catch {}
+        try esc.resolvePromo(promos[pi % promos.length], HedgedEscrow.Outcome(outcome % 3)) {} catch {}
+    }
+
+    // ---- v2: one-signature deposit (customer signs, relayer submits) and automatic settlement
+
+    uint256[3] internal pks = [uint256(0xC1), 0xC2, 0xBAD]; // = alice, bob, mallory in the fixture
+
+    function depositSigned(uint256 pi, uint256 ci, uint128 rawId) external {
+        if (promos.length == 0) return;
+        bytes32 p = promos[pi % promos.length];
+        uint256 pk = pks[ci % 3];
+        address c = vm.addr(pk);
+        uint64 amount = esc.getPromo(p).offerAmount;
+        bytes32 authNonce = esc.purchaseKeyOf(p, c, bytes16(rawId));
+        uint256 vb = block.timestamp + 1 days;
+        bytes32 h = keccak256(
+            abi.encode(usdc.RECEIVE_WITH_AUTHORIZATION_TYPEHASH(), c, address(esc), uint256(amount), 0, vb, authNonce)
+        );
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(pk, keccak256(abi.encodePacked("\x19\x01", usdc.DOMAIN_SEPARATOR(), h)));
+        vm.prank(relayer);
+        try esc.depositWithAuthorization(p, bytes16(rawId), c, amount, 0, vb, v, r, s) returns (bytes32 k) {
+            keys.push(k);
+            ghostDeposited += amount;
+            ghostSignedDeposits++;
+        } catch {}
+    }
+
+    function settleOne(uint256 ki, address caller) external {
+        if (keys.length == 0) return;
+        bool[] memory was = _terminal();
+        uint256 before = usdc.balanceOf(address(esc));
+        vm.prank(caller == address(0) ? relayer : caller);
+        try esc.settlePurchase(keys[ki % keys.length]) {} catch {}
+        _countNewlyPaid(was, before);
+    }
+
+    function settleBatch(uint256 seed, uint8 n) external {
+        if (keys.length == 0) return;
+        bytes32[] memory ks = new bytes32[](n % 8);
+        for (uint256 i = 0; i < ks.length; i++) {
+            ks[i] = keys[uint256(keccak256(abi.encode(seed, i))) % keys.length]; // duplicates on purpose
+        }
+        bool[] memory was = _terminal();
+        uint256 before = usdc.balanceOf(address(esc));
+        try esc.settlePurchases(ks) {} catch {}
+        _countNewlyPaid(was, before);
+    }
+
+    function settleWholePromo(uint256 pi, uint8 offset, uint8 limit) external {
+        if (promos.length == 0) return;
+        bool[] memory was = _terminal();
+        uint256 before = usdc.balanceOf(address(esc));
+        try esc.settlePromo(promos[pi % promos.length], offset % 4, limit) {} catch {}
+        _countNewlyPaid(was, before);
+    }
+
+    function _terminal() internal view returns (bool[] memory t) {
+        t = new bool[](keys.length);
+        for (uint256 i = 0; i < keys.length; i++) {
+            HedgedEscrow.PurchaseState s = esc.getPurchase(keys[i]).state;
+            t[i] = s == HedgedEscrow.PurchaseState.Refunded || s == HedgedEscrow.PurchaseState.ClaimedByCustomer
+                || s == HedgedEscrow.PurchaseState.ClaimedByMerchant;
+        }
+    }
+
+    function _countNewlyPaid(bool[] memory was, uint256 vaultBefore) internal {
+        bool[] memory nowT = _terminal();
+        for (uint256 i = 0; i < nowT.length; i++) {
+            if (nowT[i] && !was[i]) {
+                paidCount[keys[i]]++;
+                ghostAutoPaid++;
+            }
+        }
+        ghostPaid += vaultBefore - usdc.balanceOf(address(esc));
     }
 
     function claimRefund(uint256 ki, uint256 who) external {
@@ -169,18 +244,24 @@ contract InvariantTest is EscrowFixture {
             require(n <= 1, "paid twice");
             HedgedEscrow.PurchaseState s = esc.getPurchase(k).state;
             bool terminal = s == HedgedEscrow.PurchaseState.Refunded
-                || s == HedgedEscrow.PurchaseState.ClaimedByCustomer || s == HedgedEscrow.PurchaseState.ClaimedByMerchant;
+                || s == HedgedEscrow.PurchaseState.ClaimedByCustomer
+                || s == HedgedEscrow.PurchaseState.ClaimedByMerchant;
             require(terminal == (n == 1), "terminal <=> paid once");
         }
     }
 
-    /// A merchant payout only ever happens under a NO resolution; a YES refund only under YES.
+    /// A merchant payout only ever happens for a hedged purchase under NO or VOID; a YES refund only
+    /// under YES.
     function invariant_payoutMatchesOutcome() public view {
         for (uint256 i = 0; i < h.keysLength(); i++) {
             HedgedEscrow.Purchase memory u = esc.getPurchase(h.keys(i));
             HedgedEscrow.PromoState ps = esc.getPromo(u.promo).state;
             if (u.state == HedgedEscrow.PurchaseState.ClaimedByMerchant) {
-                require(ps == HedgedEscrow.PromoState.ResolvedNo, "merchant paid without NO");
+                require(
+                    ps == HedgedEscrow.PromoState.ResolvedNo || ps == HedgedEscrow.PromoState.ResolvedVoid,
+                    "merchant paid without NO/VOID"
+                );
+                require(u.hedgedAt != 0, "merchant paid for a purchase that was never hedged");
             }
             if (u.state == HedgedEscrow.PurchaseState.ClaimedByCustomer) {
                 require(ps == HedgedEscrow.PromoState.ResolvedYes, "yes refund without YES");

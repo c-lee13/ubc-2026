@@ -1,7 +1,8 @@
 export interface ApiConfig {
   host: string;
   port: number;
-  corsOrigin: string;
+  /** Browser origins allowed to call the API (`API_CORS_ORIGIN`, comma-separated). */
+  corsOrigin: string[];
   gemini: { baseUrl: string; timeoutMs: number };
   hedge: { maxQuoteAgeMs: number; feeBps: number };
   /** Server-only. null = in-memory store (not durable). */
@@ -49,7 +50,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   return {
     host: env.API_HOST ?? "0.0.0.0",
     port,
-    corsOrigin: env.API_CORS_ORIGIN ?? "http://localhost:3000",
+    corsOrigin: (env.API_CORS_ORIGIN ?? "http://localhost:3000")
+      .split(",")
+      .map((o) => o.trim().replace(/\/$/, ""))
+      .filter(Boolean),
     gemini: {
       baseUrl: env.GEMINI_API_BASE_URL || "https://api.gemini.com",
       timeoutMs: nonNegativeInt(env.GEMINI_TIMEOUT_MS, 5000, "GEMINI_TIMEOUT_MS"),

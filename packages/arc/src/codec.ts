@@ -1,6 +1,11 @@
 import type { ClaimKind } from "@hedged/shared";
+
+function decodeFail(what: string): never {
+  throw new Error(`unknown escrow event value: ${what} (ABI out of date?)`);
+}
 import { decodeEventLog, type Address, type Hex, type Log } from "viem";
 import { HEDGED_ESCROW_ABI } from "./abi";
+import { CLAIM_KIND_NAMES } from "./accounts";
 import { fromBytes16 } from "./ids";
 
 /**
@@ -31,7 +36,8 @@ export type DecodedEscrowEvent =
   | {
       name: "ResolutionEvent";
       promo: Hex;
-      outcome: "YES" | "NO";
+      /** v2 adds "VOID" (contract `Outcome.Void` = 2). */
+      outcome: ArcOutcome;
       relayer: Address;
       resolvedAt: number;
     }
@@ -45,9 +51,10 @@ export type DecodedEscrowEvent =
       claimedAt: number;
     };
 
-export type IndexedEscrowEvent = DecodedEscrowEvent & { eventIndex: number; logIndex: number };
+export type ArcOutcome = "YES" | "NO" | "VOID";
+export const OUTCOMES: readonly ArcOutcome[] = ["YES", "NO", "VOID"];
 
-const CLAIM_KINDS: readonly ClaimKind[] = ["CANCEL_REFUND", "YES_REFUND", "MERCHANT_PAYOUT"];
+export type IndexedEscrowEvent = DecodedEscrowEvent & { eventIndex: number; logIndex: number };
 
 type MinimalLog = Pick<Log, "address" | "data" | "topics"> & { logIndex?: number | null };
 
@@ -109,7 +116,8 @@ export function decodeEscrowLogs(
           ...base,
           name: "ResolutionEvent",
           promo: a.promo as Hex,
-          outcome: Number(a.outcome) === 0 ? "YES" : "NO",
+          // Never map an unknown value to YES/NO: a VOID read as NO would pay out wrongly.
+          outcome: OUTCOMES[Number(a.outcome)] ?? decodeFail(`outcome ${String(a.outcome)}`),
           relayer: a.relayer as Address,
           resolvedAt: Number(a.resolvedAt),
         });
@@ -122,7 +130,7 @@ export function decodeEscrowLogs(
           purchase: a.purchase as Hex,
           recipient: a.recipient as Address,
           amount: String(a.amount),
-          kind: CLAIM_KINDS[Number(a.kind)] ?? "CANCEL_REFUND",
+          kind: CLAIM_KIND_NAMES[Number(a.kind)] ?? decodeFail(`claim kind ${String(a.kind)}`),
           claimedAt: Number(a.claimedAt),
         });
         break;

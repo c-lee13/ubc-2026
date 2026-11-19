@@ -1,5 +1,8 @@
 # Email-login wallets + Arc checkout (frontend guide)
 
+> The complete frontend reference (shop publish, counter screen, claims, all shapes) is
+> `docs/FRONTEND-API.md`. This page covers login and checkout only.
+
 Customers and shops log in with an email code; Circle creates an Arc wallet behind the scenes. The
 backend holds the Circle API key; the browser only holds Circle's per-user `userToken`, sent to our
 API as the `X-User-Token` header. Every money-moving step returns a Circle `challengeId` that the
@@ -19,6 +22,9 @@ Web SDK: Circle's user-controlled wallets web SDK (`W3SSdk`). App ID: `NEXT_PUBL
 6. `GET /api/wallet` → `{ wallets: [{ id, address, blockchain, usdcBalance }] }` (6-decimal base units).
 
 ## Checkout (customer at the counter)
+
+> On escrow v2 (`status.checkout === "one-tap"`) use `/sign` + `/submit` instead of the steps below;
+> see `docs/FRONTEND-API.md`. These steps are the v1 / fallback flow.
 
 1. `GET /api/checkout/:promoId/status?walletId=…` → `{ canBuy, pauseReason, price, usdcBalance, enoughBalance, needsApproval }`.
    Disable the pay button unless `canBuy && enoughBalance`.

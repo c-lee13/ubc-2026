@@ -11,6 +11,30 @@ interface IERC20Like {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
+/// @dev EIP-2612 (Circle FiatToken v2+; Arc testnet USDC answers `DOMAIN_SEPARATOR`, `nonces`,
+///      `PERMIT_TYPEHASH`, name "USDC", version "2").
+interface IERC20PermitLike {
+    function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+        external;
+    function allowance(address owner, address spender) external view returns (uint256);
+}
+
+/// @dev EIP-3009 `receiveWithAuthorization` (FiatToken v2+): the token enforces `msg.sender == to`,
+///      so only this escrow can redeem an authorization made out to it.
+interface IERC3009Like {
+    function receiveWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external;
+}
+
 /// @title HedgedEscrow: Arc (EVM) port of the `programs/escrow` Anchor program.
 /// @notice Same 12 operations, same state machines, same authority/pause matrix, same errors
 ///         (in the same order, so `errorIndex + 6000` equals the Anchor code), same five events.
@@ -24,18 +48,38 @@ interface IERC20Like {
 ///         - Token "accounts" are wallet addresses: payouts go to the recorded customer /
 ///           merchant address itself (strictly tighter than the Anchor owner check).
 ///         - Appended errors (index >= 23) cover cases Anchor reports through system errors.
+///         v2 additions (Arc only, all append-only so the v1 ABI keeps working):
+///         - VOID outcome (`Outcome.Void` -> `PromoState.ResolvedVoid`): the event was cancelled or the
+///           market voided. Product rule (team spec 2026-11-18): "nobody wins, the shop keeps the
+///           sales, flagged for an operator": Hedged purchases pay the MERCHANT; purchases never
+///           hedged (Deposited / Cancelled) are refunded to their customer.
+///         - Automatic settlement: `settlePurchase` / `settlePurchases` / `settlePromo` push each
+///           purchase's exact amount to its entitled party. Permissionless on purpose: the recipient
+///           and amount are fixed by contract state, so a caller can only pay what is owed to whom it
+///           is owed. The self-claims stay as a fallback; whichever runs first wins, exactly once.
+///         - Unhedged deposits on a resolved promo can never become Hedged (`markHedged` needs an
+///           Active promo), so they are refundable to the customer under any outcome (the
+///           "refund-only" default of docs/interfaces.md §8).
+///         - One-signature checkout: `depositWithAuthorization` (EIP-3009, customer signs once, anyone
+///           such as the relayer submits and pays gas; the 3009 nonce IS the purchase key, so the
+///           signature is bound to promo + customer + purchaseId) and `depositWithPermit` (EIP-2612).
+///         - Extension points for undecided rules (platform fee, per-customer limit): every deposit
+///           goes through `_recordDeposit` and every payout through `_settle` / `_trySettle`.
 contract HedgedEscrow {
     // ---------------------------------------------------------------- constants
     uint8 public constant TOKEN_DECIMALS = 6;
     uint256 public constant MAX_MARKET_ID_LEN = 64;
     uint64 public constant MIN_CANCEL_TIMEOUT_SECS = 1;
     uint64 public constant MAX_CANCEL_TIMEOUT_SECS = 30 days;
+    /// Upper bound for one batch settlement call (about 50 x ~40k gas, well under Arc's 30M block).
+    uint256 public constant MAX_SETTLE_BATCH = 50;
 
     // ---------------------------------------------------------------- types (Anchor order)
     enum PromoState {
         Active,
         ResolvedYes,
-        ResolvedNo
+        ResolvedNo,
+        ResolvedVoid // v2, appended
     }
 
     enum PurchaseState {
@@ -49,13 +93,23 @@ contract HedgedEscrow {
 
     enum Outcome {
         Yes,
-        No
+        No,
+        Void // v2, appended
     }
 
     enum ClaimKind {
         CancelRefund,
         YesRefund,
         MerchantPayout
+    }
+
+    /// v2: what `previewSettlement` reports for a purchase right now.
+    enum SettleStatus {
+        Payable,
+        NotFound,
+        AlreadySettled,
+        NotDue, // promo still Active and the purchase is not Cancelled
+        Paused // outcome-dependent payout of a Hedged purchase while the admin pause is on
     }
 
     struct Promo {
@@ -116,6 +170,8 @@ contract HedgedEscrow {
     error AccountNotFound(); // Anchor 3012 AccountNotInitialized
     error Reentrancy();
     error TokenTransferFailed(); // token returned false / reverted / balance delta mismatch
+    error BatchTooLarge(); // v2: more than MAX_SETTLE_BATCH keys
+    error PermitFailed(); // v2: permit rejected and no sufficient allowance exists
 
     // ---------------------------------------------------------------- events (same five)
     event DepositEvent(
@@ -140,6 +196,10 @@ contract HedgedEscrow {
         ClaimKind kind,
         uint64 claimedAt
     );
+
+    /// v2: a batch settlement skipped this purchase because the token refused the transfer (e.g. a
+    /// blocklisted recipient). Nothing moved and the purchase stays payable.
+    event SettlementFailed(bytes32 indexed promo, bytes32 indexed purchase, address indexed recipient, uint64 amount);
 
     // ---------------------------------------------------------------- config (Anchor `Config`)
     address public admin;
@@ -197,6 +257,7 @@ contract HedgedEscrow {
     /// `initialize_promo`. Blocked while paused.
     function initializePromo(uint64 promoNonce, uint64 offerAmount, uint64 depositDeadline, string calldata marketId)
         external
+        nonReentrant
         returns (bytes32 promoId)
     {
         if (paused) revert Paused();
@@ -227,44 +288,61 @@ contract HedgedEscrow {
         nonReentrant
         returns (bytes32 purchaseKey)
     {
-        if (paused) revert Paused();
-        Promo storage p = _existingPromo(promoId);
-        if (p.state != PromoState.Active) revert PromoNotActive();
-        purchaseKey = purchaseKeyOf(promoId, msg.sender, purchaseId);
-        if (_purchases[purchaseKey].exists) revert PurchaseAlreadyExists();
-        uint64 nowTs = _now();
-        if (!(nowTs < p.depositDeadline)) revert DepositClosed();
-        if (amount != p.offerAmount) revert WrongAmount();
-        uint64 totalDeposited = _add(p.totalDeposited, amount);
-        uint64 purchaseCount = _add(p.purchaseCount, 1);
+        purchaseKey = _recordDeposit(promoId, purchaseId, msg.sender, amount);
+        _pullExact(abi.encodeCall(IERC20Like.transferFrom, (msg.sender, address(this), amount)), amount);
+    }
 
-        // effects
-        p.totalDeposited = totalDeposited;
-        p.purchaseCount = purchaseCount;
-        _purchases[purchaseKey] = Purchase({
-            promo: promoId,
-            customer: msg.sender,
-            purchaseId: purchaseId,
-            amount: amount,
-            state: PurchaseState.Deposited,
-            depositedAt: nowTs,
-            hedgedAt: 0,
-            cancelledAt: 0,
-            settledAt: 0,
-            exists: true
-        });
-        _promoPurchases[promoId].push(purchaseKey);
-        emit DepositEvent(promoId, purchaseKey, msg.sender, purchaseId, amount, nowTs);
+    /// v2 one-signature checkout (EIP-3009). The customer signs ONE `ReceiveWithAuthorization`
+    /// (from = customer, to = this escrow, value = the exact offer, nonce = the purchase key
+    /// `purchaseKeyOf(promoId, customer, purchaseId)`); anyone, normally the relayer, submits it
+    /// and pays the gas. The nonce binding means a submitter cannot redirect the signature to
+    /// another promo, purchase id or amount, and `receiveWithAuthorization` itself only lets this
+    /// contract redeem it. The purchase's customer is `customer` (the signer), not msg.sender.
+    function depositWithAuthorization(
+        bytes32 promoId,
+        bytes16 purchaseId,
+        address customer,
+        uint64 amount,
+        uint256 validAfter,
+        uint256 validBefore,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant returns (bytes32 purchaseKey) {
+        if (customer == address(0)) revert Unauthorized();
+        purchaseKey = _recordDeposit(promoId, purchaseId, customer, amount);
+        _pullExact(
+            abi.encodeCall(
+                IERC3009Like.receiveWithAuthorization,
+                (customer, address(this), amount, validAfter, validBefore, purchaseKey, v, r, s)
+            ),
+            amount
+        );
+    }
 
-        // interaction: exact-amount pull (rejects fee-on-transfer / short transfers)
-        uint256 before = token.balanceOf(address(this));
-        _call(abi.encodeCall(IERC20Like.transferFrom, (msg.sender, address(this), amount)));
-        if (token.balanceOf(address(this)) - before != amount) revert TokenTransferFailed();
+    /// v2 checkout with an EIP-2612 permit for exactly `amount` (the customer still sends the tx).
+    /// If the permit was already used (front-run), an existing allowance >= amount is accepted.
+    function depositWithPermit(
+        bytes32 promoId,
+        bytes16 purchaseId,
+        uint64 amount,
+        uint256 permitDeadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant returns (bytes32 purchaseKey) {
+        purchaseKey = _recordDeposit(promoId, purchaseId, msg.sender, amount);
+        IERC20PermitLike t = IERC20PermitLike(address(token));
+        try t.permit(msg.sender, address(this), amount, permitDeadline, v, r, s) {}
+        catch {
+            if (t.allowance(msg.sender, address(this)) < amount) revert PermitFailed();
+        }
+        _pullExact(abi.encodeCall(IERC20Like.transferFrom, (msg.sender, address(this), amount)), amount);
     }
 
     /// `cancel_expired_deposit`: the purchase's customer, once `now >= depositedAt + timeout`.
     /// Allowed while paused and in any promo state. Never for Hedged purchases.
-    function cancelExpiredDeposit(bytes32 purchaseKey) external {
+    function cancelExpiredDeposit(bytes32 purchaseKey) external nonReentrant {
         Purchase storage u = _existingPurchase(purchaseKey);
         if (u.customer != msg.sender) revert Unauthorized();
         _requireDepositedForCancel(u);
@@ -278,59 +356,82 @@ contract HedgedEscrow {
         emit PurchaseCancelledEvent(u.promo, purchaseKey, u.customer, u.amount, nowTs);
     }
 
-    /// `claim_refund`: Cancelled -> Refunded (any promo state, allowed while paused), or
-    /// Hedged -> ClaimedByCustomer when the promo resolved YES (blocked while paused).
+    /// `claim_refund` (self-claim fallback to the automatic settlement): Cancelled -> Refunded (any
+    /// promo state, allowed while paused); v2: Deposited on a resolved promo -> Refunded (allowed
+    /// while paused: it can never be hedged any more); Hedged -> ClaimedByCustomer when the promo
+    /// resolved YES (blocked while paused).
     function claimRefund(bytes32 purchaseKey) external nonReentrant {
         Purchase storage u = _existingPurchase(purchaseKey);
         if (u.customer != msg.sender) revert Unauthorized();
         Promo storage p = _promos[u.promo];
-        PurchaseState next;
-        ClaimKind kind;
-        if (u.state == PurchaseState.Cancelled) {
-            (next, kind) = (PurchaseState.Refunded, ClaimKind.CancelRefund);
-        } else if (u.state == PurchaseState.Hedged) {
-            if (p.state != PromoState.ResolvedYes) revert InvalidState();
-            if (paused) revert Paused();
-            (next, kind) = (PurchaseState.ClaimedByCustomer, ClaimKind.YesRefund);
-        } else if (u.state == PurchaseState.Deposited) {
-            revert InvalidState();
-        } else {
-            revert AlreadyClaimed();
-        }
-        uint64 amount = u.amount;
-        uint64 nowTs = _now();
-        u.state = next;
-        u.settledAt = nowTs;
-        _payFromVault(p, u.customer, amount);
-        emit ClaimEvent(u.promo, purchaseKey, u.customer, amount, kind, nowTs);
+        (SettleStatus st, address to, PurchaseState next, ClaimKind kind) = _due(u, p);
+        if (st == SettleStatus.AlreadySettled) revert AlreadyClaimed();
+        if (st == SettleStatus.NotDue || kind == ClaimKind.MerchantPayout) revert InvalidState();
+        if (st == SettleStatus.Paused) revert Paused();
+        _settle(purchaseKey, u, p, to, next, kind);
     }
 
-    /// `claim_merchant`: Hedged -> ClaimedByMerchant when the promo resolved NO. Blocked while paused.
+    /// `claim_merchant`: Hedged -> ClaimedByMerchant when the promo resolved NO, or (v2) VOID (the
+    /// shop keeps the sale). Blocked while paused.
     function claimMerchant(bytes32 purchaseKey) external nonReentrant {
         if (paused) revert Paused();
         Purchase storage u = _existingPurchase(purchaseKey);
         Promo storage p = _promos[u.promo];
         if (p.merchant != msg.sender) revert Unauthorized();
-        if (u.state == PurchaseState.Hedged) {
-            // ok
-        } else if (u.state == PurchaseState.Deposited || u.state == PurchaseState.Cancelled) {
-            revert InvalidState();
-        } else {
-            revert AlreadyClaimed();
+        if (u.state == PurchaseState.Deposited || u.state == PurchaseState.Cancelled) revert InvalidState();
+        (SettleStatus st, address to, PurchaseState next, ClaimKind kind) = _due(u, p);
+        if (st == SettleStatus.AlreadySettled) revert AlreadyClaimed();
+        if (st != SettleStatus.Payable || kind != ClaimKind.MerchantPayout) revert InvalidState();
+        _settle(purchaseKey, u, p, to, next, kind);
+    }
+
+    // ================================================================ automatic settlement (v2, anyone)
+
+    /// Push one purchase's exact amount to its entitled party (customer: Cancelled, unhedged after
+    /// resolution, Hedged on YES; merchant: Hedged on NO or VOID). Reverts like the claims do:
+    /// AlreadyClaimed (settled already), InvalidState (not due yet), Paused, TokenTransferFailed.
+    function settlePurchase(bytes32 purchaseKey) external nonReentrant {
+        Purchase storage u = _existingPurchase(purchaseKey);
+        Promo storage p = _promos[u.promo];
+        (SettleStatus st, address to, PurchaseState next, ClaimKind kind) = _due(u, p);
+        if (st == SettleStatus.AlreadySettled) revert AlreadyClaimed();
+        if (st == SettleStatus.NotDue) revert InvalidState();
+        if (st == SettleStatus.Paused) revert Paused();
+        _settle(purchaseKey, u, p, to, next, kind);
+    }
+
+    /// Batch version (at most MAX_SETTLE_BATCH keys, any promos). Never reverts for a single
+    /// purchase: unknown, already settled, not yet due, paused, or refused by the token (emits
+    /// SettlementFailed, state rolled back) are skipped. Returns how many were paid.
+    function settlePurchases(bytes32[] calldata purchaseKeys) external nonReentrant returns (uint256 settled) {
+        if (purchaseKeys.length > MAX_SETTLE_BATCH) revert BatchTooLarge();
+        for (uint256 i = 0; i < purchaseKeys.length; i++) {
+            if (_trySettle(purchaseKeys[i])) settled++;
         }
-        if (p.state != PromoState.ResolvedNo) revert InvalidState();
-        uint64 amount = u.amount;
-        uint64 nowTs = _now();
-        u.state = PurchaseState.ClaimedByMerchant;
-        u.settledAt = nowTs;
-        _payFromVault(p, p.merchant, amount);
-        emit ClaimEvent(u.promo, purchaseKey, p.merchant, amount, ClaimKind.MerchantPayout, nowTs);
+    }
+
+    /// Settle a promo's purchases in deposit order, `limit` (capped at MAX_SETTLE_BATCH) starting at
+    /// `offset`. Same skip rules as `settlePurchases`. Loop with `nextOffset` until it equals
+    /// `purchaseCountOf(promoId)`.
+    function settlePromo(bytes32 promoId, uint256 offset, uint256 limit)
+        external
+        nonReentrant
+        returns (uint256 settled, uint256 nextOffset)
+    {
+        _existingPromo(promoId);
+        bytes32[] storage all = _promoPurchases[promoId];
+        if (limit > MAX_SETTLE_BATCH) limit = MAX_SETTLE_BATCH;
+        if (offset >= all.length) return (0, all.length);
+        nextOffset = offset + limit > all.length ? all.length : offset + limit;
+        for (uint256 i = offset; i < nextOffset; i++) {
+            if (_trySettle(all[i])) settled++;
+        }
     }
 
     // ================================================================ relayer
 
     /// `mark_hedged`: Deposited -> Hedged; promo must be Active. Blocked while paused.
-    function markHedged(bytes32 purchaseKey) external {
+    function markHedged(bytes32 purchaseKey) external nonReentrant {
         if (msg.sender != relayer) revert Unauthorized();
         if (paused) revert Paused();
         Purchase storage u = _existingPurchase(purchaseKey);
@@ -350,7 +451,7 @@ contract HedgedEscrow {
 
     /// `cancel_unhedged`: Deposited -> Cancelled (refund entitlement for the customer). Allowed
     /// while paused and in any promo state: it can only return a customer's own funds.
-    function cancelUnhedged(bytes32 purchaseKey) external {
+    function cancelUnhedged(bytes32 purchaseKey) external nonReentrant {
         if (msg.sender != relayer) revert Unauthorized();
         Purchase storage u = _existingPurchase(purchaseKey);
         _requireDepositedForCancel(u);
@@ -360,16 +461,18 @@ contract HedgedEscrow {
         emit PurchaseCancelledEvent(u.promo, purchaseKey, u.customer, u.amount, nowTs);
     }
 
-    /// `resolve_promo`: Active -> ResolvedYes|ResolvedNo exactly once, only at/after the deposit
-    /// deadline. Check order: Unauthorized -> Paused -> AlreadyResolved -> ResolutionTooEarly.
-    function resolvePromo(bytes32 promoId, Outcome outcome) external {
+    /// `resolve_promo`: Active -> ResolvedYes|ResolvedNo|ResolvedVoid exactly once, only at/after
+    /// the deposit deadline. Check order: Unauthorized -> Paused -> AlreadyResolved -> ResolutionTooEarly.
+    function resolvePromo(bytes32 promoId, Outcome outcome) external nonReentrant {
         if (msg.sender != relayer) revert Unauthorized();
         if (paused) revert Paused();
         Promo storage p = _existingPromo(promoId);
         if (p.state != PromoState.Active) revert AlreadyResolved();
         uint64 nowTs = _now();
         if (nowTs < p.depositDeadline) revert ResolutionTooEarly();
-        p.state = outcome == Outcome.Yes ? PromoState.ResolvedYes : PromoState.ResolvedNo;
+        p.state = outcome == Outcome.Yes
+            ? PromoState.ResolvedYes
+            : outcome == Outcome.No ? PromoState.ResolvedNo : PromoState.ResolvedVoid;
         p.resolvedAt = nowTs;
         emit ResolutionEvent(promoId, outcome, msg.sender, nowTs);
     }
@@ -402,12 +505,31 @@ contract HedgedEscrow {
         return _promoPurchases[promoId].length;
     }
 
-    function purchaseKeysOf(bytes32 promoId, uint256 offset, uint256 limit) external view returns (bytes32[] memory out) {
+    function purchaseKeysOf(bytes32 promoId, uint256 offset, uint256 limit)
+        external
+        view
+        returns (bytes32[] memory out)
+    {
         bytes32[] storage all = _promoPurchases[promoId];
         if (offset >= all.length) return new bytes32[](0);
         uint256 end = offset + limit > all.length ? all.length : offset + limit;
         out = new bytes32[](end - offset);
-        for (uint256 i = offset; i < end; i++) out[i - offset] = all[i];
+        for (uint256 i = offset; i < end; i++) {
+            out[i - offset] = all[i];
+        }
+    }
+
+    /// v2: what an automatic settlement would do for this purchase right now (recipient and amount
+    /// are only meaningful when status is Payable or Paused).
+    function previewSettlement(bytes32 purchaseKey)
+        external
+        view
+        returns (SettleStatus status, address recipient, uint64 amount, ClaimKind kind)
+    {
+        Purchase storage u = _purchases[purchaseKey];
+        if (!u.exists) return (SettleStatus.NotFound, address(0), 0, ClaimKind.CancelRefund);
+        (status, recipient,, kind) = _due(u, _promos[u.promo]);
+        amount = u.amount;
     }
 
     function promoCount() external view returns (uint256) {
@@ -420,12 +542,145 @@ contract HedgedEscrow {
 
     // ================================================================ internal
 
-    function _payFromVault(Promo storage p, address to, uint64 amount) private {
+    /// The single entitlement rule used by the claims and the automatic settlement.
+    function _due(Purchase storage u, Promo storage p)
+        private
+        view
+        returns (SettleStatus st, address to, PurchaseState next, ClaimKind kind)
+    {
+        PurchaseState s = u.state;
+        if (s == PurchaseState.Refunded || s == PurchaseState.ClaimedByCustomer || s == PurchaseState.ClaimedByMerchant)
+        return (SettleStatus.AlreadySettled, address(0), s, ClaimKind.CancelRefund);
+        if (s == PurchaseState.Cancelled) {
+            return (SettleStatus.Payable, u.customer, PurchaseState.Refunded, ClaimKind.CancelRefund);
+        }
+        if (p.state == PromoState.Active) return (SettleStatus.NotDue, address(0), s, ClaimKind.CancelRefund);
+        if (s == PurchaseState.Deposited) {
+            // Never hedged and can no longer be (markHedged needs Active): refund under any outcome.
+            return (SettleStatus.Payable, u.customer, PurchaseState.Refunded, ClaimKind.CancelRefund);
+        }
+        // Hedged: the payout depends on the outcome, so it waits while the admin pause is on.
+        if (p.state == PromoState.ResolvedYes) {
+            (to, next, kind) = (u.customer, PurchaseState.ClaimedByCustomer, ClaimKind.YesRefund);
+        } else {
+            // NO, or VOID ("nobody wins, the shop keeps the sale")
+            (to, next, kind) = (p.merchant, PurchaseState.ClaimedByMerchant, ClaimKind.MerchantPayout);
+        }
+        st = paused ? SettleStatus.Paused : SettleStatus.Payable;
+    }
+
+    /// Checks done by the caller. Effects, then the exact-amount transfer (reverts on failure).
+    function _settle(
+        bytes32 purchaseKey,
+        Purchase storage u,
+        Promo storage p,
+        address to,
+        PurchaseState next,
+        ClaimKind kind
+    ) private {
+        uint64 amount = u.amount;
+        uint64 nowTs = _now();
+        u.state = next;
+        u.settledAt = nowTs;
         uint64 totalPaidOut = _add(p.totalPaidOut, amount);
         if (totalPaidOut > p.totalDeposited) revert InsufficientVaultFunds();
-        if (token.balanceOf(address(this)) < amount) revert InsufficientVaultFunds();
+        uint256 before = token.balanceOf(address(this));
+        if (before < amount) revert InsufficientVaultFunds();
         p.totalPaidOut = totalPaidOut;
         _call(abi.encodeCall(IERC20Like.transfer, (to, amount)));
+        if (before - token.balanceOf(address(this)) != amount) revert TokenTransferFailed();
+        emit ClaimEvent(u.promo, purchaseKey, to, amount, kind, nowTs);
+    }
+
+    /// Batch variant: skips instead of reverting; a token-refused transfer rolls the effects back.
+    function _trySettle(bytes32 purchaseKey) private returns (bool) {
+        Purchase storage u = _purchases[purchaseKey];
+        if (!u.exists) return false;
+        Promo storage p = _promos[u.promo];
+        (SettleStatus st, address to, PurchaseState next, ClaimKind kind) = _due(u, p);
+        if (st != SettleStatus.Payable) return false;
+        uint64 amount = u.amount;
+        uint64 totalPaidOut = _add(p.totalPaidOut, amount);
+        if (totalPaidOut > p.totalDeposited) revert InsufficientVaultFunds();
+        PurchaseState prevState = u.state; // a payable purchase has settledAt == 0
+        // effects
+        u.state = next;
+        u.settledAt = _now();
+        p.totalPaidOut = totalPaidOut;
+        // interaction
+        if (!_tryTransfer(to, amount)) {
+            u.state = prevState;
+            u.settledAt = 0;
+            p.totalPaidOut = totalPaidOut - amount;
+            emit SettlementFailed(u.promo, purchaseKey, to, amount);
+            return false;
+        }
+        emit ClaimEvent(u.promo, purchaseKey, to, amount, kind, _now());
+        return true;
+    }
+
+    /// Transfer that reports a token refusal (false / revert, nothing moved) instead of reverting.
+    /// Reverts if the vault balance moved by anything other than exactly `amount` on success, or
+    /// at all on a "failure".
+    function _tryTransfer(address to, uint64 amount) private returns (bool) {
+        uint256 before = token.balanceOf(address(this));
+        if (before < amount) revert InsufficientVaultFunds();
+        (bool ok, bytes memory ret) = address(token).call(abi.encodeCall(IERC20Like.transfer, (to, amount)));
+        uint256 afterBal = token.balanceOf(address(this));
+        if (!(ok && _returnedTrue(ret))) {
+            if (afterBal != before) revert TokenTransferFailed();
+            return false;
+        }
+        if (afterBal + amount != before) revert TokenTransferFailed();
+        return true;
+    }
+
+    /// Validation + effects shared by every deposit path (the single place a future per-customer
+    /// limit or deposit-side fee would go). Emits DepositEvent; the caller pulls the tokens.
+    function _recordDeposit(bytes32 promoId, bytes16 purchaseId, address customer, uint64 amount)
+        private
+        returns (bytes32 purchaseKey)
+    {
+        if (paused) revert Paused();
+        Promo storage p = _existingPromo(promoId);
+        if (p.state != PromoState.Active) revert PromoNotActive();
+        purchaseKey = purchaseKeyOf(promoId, customer, purchaseId);
+        if (_purchases[purchaseKey].exists) revert PurchaseAlreadyExists();
+        uint64 nowTs = _now();
+        if (!(nowTs < p.depositDeadline)) revert DepositClosed();
+        if (amount != p.offerAmount) revert WrongAmount();
+        uint64 totalDeposited = _add(p.totalDeposited, amount);
+        uint64 purchaseCount = _add(p.purchaseCount, 1);
+
+        p.totalDeposited = totalDeposited;
+        p.purchaseCount = purchaseCount;
+        _purchases[purchaseKey] = Purchase({
+            promo: promoId,
+            customer: customer,
+            purchaseId: purchaseId,
+            amount: amount,
+            state: PurchaseState.Deposited,
+            depositedAt: nowTs,
+            hedgedAt: 0,
+            cancelledAt: 0,
+            settledAt: 0,
+            exists: true
+        });
+        _promoPurchases[promoId].push(purchaseKey);
+        emit DepositEvent(promoId, purchaseKey, customer, purchaseId, amount, nowTs);
+    }
+
+    /// Exact-amount pull (rejects fee-on-transfer / short transfers).
+    function _pullExact(bytes memory data, uint64 amount) private {
+        uint256 before = token.balanceOf(address(this));
+        _call(data);
+        if (token.balanceOf(address(this)) - before != amount) revert TokenTransferFailed();
+    }
+
+    function _returnedTrue(bytes memory ret) private pure returns (bool) {
+        if (ret.length == 0) return true;
+        if (ret.length != 32) return false;
+        return abi.decode(ret, (uint256)) == 1;
     }
 
     function _requireDepositedForCancel(Purchase storage u) private view {
@@ -447,7 +702,7 @@ contract HedgedEscrow {
     /// SafeERC20-style call: reverts on failure, accepts tokens that return nothing.
     function _call(bytes memory data) private {
         (bool ok, bytes memory ret) = address(token).call(data);
-        if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert TokenTransferFailed();
+        if (!ok || !_returnedTrue(ret)) revert TokenTransferFailed();
     }
 
     function _add(uint64 a, uint64 b) private pure returns (uint64) {
