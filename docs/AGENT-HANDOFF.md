@@ -14,6 +14,22 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-18 21:19 ET · Dev 3 Dylan (Claude) · branch `wincentive-redesign`
+
+- Design review round (fresh reviewer, ranked notes) applied; wordmark lockup (the mark is the W of
+  "Wincentive", tuned to Archivo's cap height); Dylan's checkout notes (big numbers auto-fit, rosette
+  sized to the amount, tighter gap; overflow sweep of every route at 390 and 375px is clean).
+- Add money's pay sheet is modeled on the iOS payment sheet (side-button prompt, Face ID style scan,
+  Done), built from scratch; no Apple logo or "Apple Pay" words.
+- Coupons tab has a List / Map toggle (`/?view=map`): MapLibre GL + OpenFreeMap's free dark style (no
+  key), tinted to the app; price-tag pin per shop, tap for that shop's promos (Buy on the card); "Near
+  me" uses the browser's location only on tap and only on https (the LAN preview shows Austin).
+- Shop location has no API field: New promo has a Neighborhood picker; it is sent as the promo's
+  `location` text (an existing API field), so other phones can place the pin from the text; the exact
+  point is kept in the shop's browser. Proposed `shop.geo { lat, lng }` (sample server sends it).
+- Order codes are shown as 5-digit numbers (`#04821`) mapped one-to-one from the API's 4-character
+  `orderCode`, the same on receipt, counter and My promos.
+
 ### 2026-11-18 20:46 ET · Dev 3 Dylan (Claude) · branch `wincentive-redesign` (from `arc-frontend-test`)
 
 - Frontend redesign per `frontend-feedback-2026-11-18.md`. Look = Dylan's dark prototype
