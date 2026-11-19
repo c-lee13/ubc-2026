@@ -61,6 +61,8 @@ export function Voucher(props: VoucherProps) {
   const seed = seedOf(props.seed);
   const ros = rosette(seed, 1);
   const dollars = usd(props.amount).replace(/\.00$/, "");
+  // A wider amount gets a wider center disc (it covers the innermost rings).
+  const disc = dollars.length <= 2 ? 44 : dollars.length === 3 ? 52 : 62;
   const id = `tg-${seed.toString(36)}`;
   const micro = Array.from({ length: 8 }, () => props.marketId).join("   ");
 
@@ -92,11 +94,19 @@ export function Voucher(props: VoucherProps) {
                   <path key={i} d={d} />
                 ))}
               </g>
-              <circle r={44} fill="var(--color-paper-raised)" />
-              <circle r={44} fill="none" stroke={`url(#${id}-r)`} strokeWidth={1.4} />
+              <circle r={disc} fill="var(--color-paper-raised)" />
+              <circle r={disc} fill="none" stroke={`url(#${id}-r)`} strokeWidth={1.4} />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-display text-[12.5cqw] leading-none tracking-[-0.04em] @min-[420px]:text-[6.6cqw]">
+              <span
+                className={`font-display leading-none tracking-[-0.04em] ${
+                  dollars.length <= 2
+                    ? "text-[12.5cqw] @min-[420px]:text-[6.6cqw]"
+                    : dollars.length === 3
+                      ? "text-[10.4cqw] @min-[420px]:text-[5.5cqw]"
+                      : "text-[8cqw] @min-[420px]:text-[4.2cqw]"
+                }`}
+              >
                 {dollars}
               </span>
               <span

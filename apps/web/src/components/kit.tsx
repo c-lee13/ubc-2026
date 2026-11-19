@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useId, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { IconClose, IconInfo } from "./icons";
 
@@ -323,6 +331,48 @@ export function Perforation({ className = "" }: { className?: string }) {
       <span className="absolute -right-[26px] top-1/2 h-[20px] w-[20px] -translate-y-1/2 rounded-full bg-bg ring-1 ring-line [clip-path:inset(0_50%_0_0)]" />
       <div className="border-t-2 border-dashed border-line" />
     </div>
+  );
+}
+
+/* ---------- text that always fits its column ---------- */
+
+/**
+ * One line of big type (odds, countdowns, order codes) that shrinks until it fits its parent's
+ * width, so it can never cross a card's edge at 375 or 390px. `max` is the size it wants.
+ */
+export function FitText({
+  children,
+  max,
+  min = 16,
+  className = "",
+}: {
+  children: ReactNode;
+  max: number;
+  min?: number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const parent = el?.parentElement;
+    if (!el || !parent) return;
+    const fit = () => {
+      el.style.fontSize = `${max}px`;
+      const avail = parent.clientWidth;
+      const need = el.scrollWidth;
+      if (avail > 0 && need > avail) {
+        el.style.fontSize = `${Math.max(min, Math.floor((max * avail) / need) - 1)}px`;
+      }
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, [children, max, min]);
+  return (
+    <span ref={ref} className={`block whitespace-nowrap ${className}`} style={{ fontSize: max }}>
+      {children}
+    </span>
   );
 }
 

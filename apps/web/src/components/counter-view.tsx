@@ -10,7 +10,7 @@ import { clock, countdown, displayCode } from "@/lib/format";
 import { useNowSeconds, useOrigin, usePoll } from "@/lib/hooks";
 import { condition, oddsPct, price, shortCountdown } from "@/lib/promo-view";
 import { IconBack, IconCheck } from "./icons";
-import { Note, Spinner, Wordmark } from "./kit";
+import { FitText, Note, Spinner, Wordmark } from "./kit";
 import { CouponsLeft, type Promo } from "./promo-card";
 import { QrCode } from "./qr";
 
@@ -100,13 +100,13 @@ export function CounterView({ promoId }: { promoId: string }) {
               <p className="font-title mt-4 text-center text-[20px]">Scan to buy</p>
               <div className="mt-4 grid grid-cols-2 gap-4 text-center">
                 <div>
-                  <p className="font-num text-[44px] text-note lg:text-[56px]">
+                  <FitText max={52} className="font-num text-note">
                     {Math.round(oddsPct(p.live?.liveAskMicroUsd) ?? 0)}%
-                  </p>
+                  </FitText>
                   <p className="mt-1 text-[14px] text-ink-soft">chance it&apos;s free</p>
                 </div>
                 <div>
-                  <p className="font-num text-[44px] lg:text-[56px]">
+                  <FitText max={52} className="font-num">
                     {now === null
                       ? "–"
                       : p.depositDeadline - now > 12 * 3600
@@ -116,7 +116,7 @@ export function CounterView({ promoId }: { promoId: string }) {
                         : p.depositDeadline - now < 3600
                           ? countdown(p.depositDeadline - now)
                           : shortCountdown(p.depositDeadline - now)}
-                  </p>
+                  </FitText>
                   <p className="mt-1 text-[14px] text-ink-soft">
                     {now !== null && p.depositDeadline - now > 12 * 3600
                       ? `kickoff ${clock(p.depositDeadline)}`
@@ -212,9 +212,9 @@ function OrderRow({
     return (
       <div className="flex items-center justify-between gap-4 rounded-[24px] bg-ribbon px-5 py-4 text-white">
         <div className="min-w-0">
-          <p className="font-display text-[40px] leading-none lg:text-[54px]">
+          <FitText max={44} className="font-display leading-none">
             {displayCode(r.orderCode, r.purchasePda)}
-          </p>
+          </FitText>
           <p className="mt-1.5 text-[15px] text-white/85">
             {item}, paid {clock(r.depositedAt)}
           </p>

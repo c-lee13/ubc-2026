@@ -17,7 +17,7 @@ import { useWallet } from "@/lib/wallet/session";
 import { AddMoneySheet } from "../add-money";
 import { HowItWorksButton } from "../how-it-works";
 import { IconCheck, IconClose, IconWallet } from "../icons";
-import { Button, Note, Odds, Spinner, Wordmark } from "../kit";
+import { Button, FitText, Note, Spinner, Wordmark } from "../kit";
 import { LoginCard } from "../login-card";
 import { CouponsLeft, closesText, type Promo } from "../promo-card";
 import { Voucher } from "../voucher";
@@ -97,6 +97,7 @@ function Offer({ p, now }: { p: Promo; now: number | null }) {
   const st = sellState(p, now);
   const left = now === null ? null : p.depositDeadline - now;
   const closes = closesText(p.depositDeadline, now);
+  const odds = oddsPct(p.live?.liveAskMicroUsd);
   const day = new Date(p.depositDeadline * 1000).toLocaleDateString("en-US", { weekday: "short" });
 
   return (
@@ -126,15 +127,26 @@ function Offer({ p, now }: { p: Promo; now: number | null }) {
         }
       />
 
-      <section className="mt-5 rounded-[28px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
+      <section className="mt-3 rounded-[28px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
         {st.kind === "selling" || st.kind === "paused" || st.kind === "soldout" ? (
-          <div className="mb-5 flex items-start justify-between gap-4">
-            <Odds pct={oddsPct(p.live?.liveAskMicroUsd)} size={54} align="left" />
+          <div className="mb-5 grid grid-cols-2 gap-4">
+            <div className="min-w-0">
+              {odds !== null ? (
+                <>
+                  <FitText max={54} className="font-num text-note">
+                    {Math.round(odds)}%
+                  </FitText>
+                  <span className="mt-1 block text-[12.5px] font-medium text-ink-soft">
+                    chance it&apos;s free
+                  </span>
+                </>
+              ) : null}
+            </div>
             {st.kind === "selling" && left !== null && left > 0 ? (
-              <div className="text-right">
-                <span className="font-num block text-[54px]">
+              <div className="min-w-0 text-right">
+                <FitText max={54} className="font-num">
                   {left > 12 * 3600 ? day : left < 3600 ? countdown(left) : shortCountdown(left)}
-                </span>
+                </FitText>
                 <span className="mt-1 block text-[12.5px] font-medium text-ink-soft">
                   {left > 12 * 3600 ? `kickoff ${clock(p.depositDeadline)}` : "left to buy"}
                 </span>

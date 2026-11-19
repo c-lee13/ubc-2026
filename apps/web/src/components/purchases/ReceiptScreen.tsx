@@ -21,7 +21,7 @@ import {
 } from "@/lib/purchases";
 import { useWallet } from "@/lib/wallet/session";
 import { IconCheck, IconClose } from "../icons";
-import { Button, Note, Spinner, Wordmark } from "../kit";
+import { Button, FitText, Note, Spinner, Wordmark } from "../kit";
 
 // The live receipt (Dylan's prototype receipt: ribbon header with the order code, a timeline with
 // pink checks), upside-only words. Polls GET /api/purchases/:key (docs/FRONTEND-API.md "Receipt").
@@ -220,11 +220,14 @@ function Receipt({
                   ? "Your order code"
                   : "Show this at the counter"}
             </p>
-            <p
-              className={`font-display mt-2 text-[64px] leading-none ${processing || refunding ? "text-ink-faint" : ""}`}
-            >
-              {code}
-            </p>
+            <div className="mt-2">
+              <FitText
+                max={64}
+                className={`font-display leading-none ${processing || refunding ? "text-ink-faint" : ""}`}
+              >
+                {code}
+              </FitText>
+            </div>
             <p className="mt-2 text-[15px] text-ink-soft">
               {item}, {r.promotion.shopName}
             </p>
