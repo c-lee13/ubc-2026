@@ -29,6 +29,8 @@ laptops and accounts and cannot message each other; this file, carried by git, i
   point is kept in the shop's browser. Proposed `shop.geo { lat, lng }` (sample server sends it).
 - Order codes are shown as 5-digit numbers (`#04821`) mapped one-to-one from the API's 4-character
   `orderCode`, the same on receipt, counter and My promos.
+- Later the same evening (Dylan): no "Selling out" badge (count + bar only); coupons at real scale
+  (New promo defaults to 100, sample promos 50-150); all type ~11% smaller, inputs kept at 16px.
 
 ### 2026-11-18 20:46 ET · Dev 3 Dylan (Claude) · branch `wincentive-redesign` (from `arc-frontend-test`)
 
