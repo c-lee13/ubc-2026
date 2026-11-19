@@ -76,6 +76,11 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
   const drafts = promos.filter((p) => p.status === "DRAFT");
   const totals = sumStats(active);
   const sales = active.reduce((a, p) => a + BigInt(p.stats.hedgedSales), 0n);
+  // The coupon count the cards show (the server's own when it sends one), summed.
+  const couponsSold = active.reduce(
+    (a, p) => a + (couponSupply(p, p.stats.hedged)?.sold ?? p.stats.hedged),
+    0,
+  );
 
   const [local, setLocal] = useState<LocalDraft[]>([]);
   useEffect(() => {
@@ -135,7 +140,7 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
               ) : null}
 
               <div className="mt-5 grid grid-cols-3 gap-2.5">
-                <Stat value={String(totals.hedged)} label="coupons sold" />
+                <Stat value={String(couponsSold)} label="coupons sold" />
                 <Stat value={compactUsd(sales)} label="in sales" />
                 <Stat
                   value={String(totals.open)}
@@ -343,7 +348,7 @@ function PromoRow({
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[13.5px] text-ink-soft">
-            <span className="font-semibold text-ink">{p.stats.hedged}</span>
+            <span className="font-semibold text-ink">{supply?.sold ?? p.stats.hedged}</span>
             {supply ? ` of ${supply.total} sold` : " sold"}
             {supply && selling && supply.sellingOut ? (
               <span className="font-semibold text-orange">, selling out</span>
