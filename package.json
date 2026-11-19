@@ -10,6 +10,7 @@
   "scripts": {
     "dev:web": "pnpm --filter @hedged/web dev",
     "dev:api": "pnpm --filter @hedged/api dev",
+    "dev:sample": "node scripts/sample-api.mjs",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",

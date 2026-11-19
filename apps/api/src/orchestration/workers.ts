@@ -21,6 +21,13 @@ export interface WorkerOptions {
   /** Optional exposure desk, rebalanced every `deskMs`. */
   desk?: Desk;
   deskMs?: number;
+  /**
+   * Prefix for the persisted checkpoint names, one per chain. Checkpoints are block/slot numbers,
+   * and Solana slots (~523M) are far above Arc block numbers (~73M): an Arc gateway resuming from a
+   * Solana checkpoint would wait for a block that does not exist yet and never sweep. "" = the
+   * original names (Solana); "arc:" for Arc.
+   */
+  checkpointPrefix?: string;
 }
 
 export interface RunningWorkers {
@@ -31,6 +38,7 @@ export interface RunningWorkers {
 
 export async function startWorkers(opts: WorkerOptions): Promise<RunningWorkers> {
   const { gateway, store, orchestrator, log } = opts;
+  const cp = (name: string) => `${opts.checkpointPrefix ?? ""}${name}`;
 
   const acked =
     <E extends { slot: number }>(name: string, handle: (e: E) => Promise<void>) =>
@@ -41,16 +49,16 @@ export async function startWorkers(opts: WorkerOptions): Promise<RunningWorkers>
 
   const subs: Unsubscribe[] = [
     await gateway.subscribeToDeposits(
-      acked("deposits", (e) => orchestrator.handleDeposit(e)),
-      { fromSlot: (await store.getCheckpoint("deposits")) ?? undefined },
+      acked(cp("deposits"), (e) => orchestrator.handleDeposit(e)),
+      { fromSlot: (await store.getCheckpoint(cp("deposits"))) ?? undefined },
     ),
     await gateway.subscribeToResolutions(
-      acked("resolutions", (e) => orchestrator.handleResolution(e)),
-      { fromSlot: (await store.getCheckpoint("resolutions")) ?? undefined },
+      acked(cp("resolutions"), (e) => orchestrator.handleResolution(e)),
+      { fromSlot: (await store.getCheckpoint(cp("resolutions"))) ?? undefined },
     ),
     await gateway.subscribeToClaims(
-      acked("claims", (e) => orchestrator.handleClaim(e)),
-      { fromSlot: (await store.getCheckpoint("claims")) ?? undefined },
+      acked(cp("claims"), (e) => orchestrator.handleClaim(e)),
+      { fromSlot: (await store.getCheckpoint(cp("claims"))) ?? undefined },
     ),
   ];
 

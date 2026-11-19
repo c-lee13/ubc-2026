@@ -1,9 +1,17 @@
-// TODO(Dev 1): promotion setup, market selection, quote display, caps/budget, status dashboard.
-export default function MerchantPage() {
-  return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-2xl font-bold">Merchant dashboard</h1>
-      <p className="mt-4 text-neutral-600">Placeholder — not implemented.</p>
-    </main>
-  );
+import type { Metadata } from "next";
+import { DashboardScreen } from "@/components/merchant/DashboardScreen";
+
+export const metadata: Metadata = { title: "Workspace: Wincentive" };
+
+const WALLET = /^0x[0-9a-fA-F]{40}$/;
+
+// The merchant workspace for the signed-in shop, or a read-only view of `?merchant=<wallet>`.
+export default async function MerchantPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ merchant?: string | string[] }>;
+}) {
+  const { merchant } = await searchParams;
+  const viewAs = typeof merchant === "string" && WALLET.test(merchant) ? merchant : null;
+  return <DashboardScreen viewAs={viewAs} />;
 }

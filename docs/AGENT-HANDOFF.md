@@ -14,6 +14,79 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-18 21:19 ET · Dev 3 Dylan (Claude) · branch `wincentive-redesign`
+
+- Design review round (fresh reviewer, ranked notes) applied; wordmark lockup (the mark is the W of
+  "Wincentive", tuned to Archivo's cap height); Dylan's checkout notes (big numbers auto-fit, rosette
+  sized to the amount, tighter gap; overflow sweep of every route at 390 and 375px is clean).
+- Add money's pay sheet is modeled on the iOS payment sheet (side-button prompt, Face ID style scan,
+  Done), built from scratch; no Apple logo or "Apple Pay" words.
+- Coupons tab has a List / Map toggle (`/?view=map`): MapLibre GL + OpenFreeMap's free dark style (no
+  key), tinted to the app; price-tag pin per shop, tap for that shop's promos (Buy on the card); "Near
+  me" uses the browser's location only on tap and only on https (the LAN preview shows Austin).
+- Shop location has no API field: New promo has a Neighborhood picker; it is sent as the promo's
+  `location` text (an existing API field), so other phones can place the pin from the text; the exact
+  point is kept in the shop's browser. Proposed `shop.geo { lat, lng }` (sample server sends it).
+- Order codes are shown as 5-digit numbers (`#04821`) mapped one-to-one from the API's 4-character
+  `orderCode`, the same on receipt, counter and My promos.
+- Later the same evening (Dylan): no "Selling out" badge (count + bar only); coupons at real scale
+  (New promo defaults to 100, sample promos 50-150); all type ~11% smaller, inputs kept at 16px.
+
+### 2026-11-18 20:46 ET · Dev 3 Dylan (Claude) · branch `wincentive-redesign` (from `arc-frontend-test`)
+
+- Frontend redesign per `frontend-feedback-2026-11-18.md`. Look = Dylan's dark prototype
+  (`frontend-prototype-unsteered`: purple-black, wide Archivo, pink odds, cream buttons, the price-tag
+  voucher and guilloche seal, ribbon receipt header, counter layout), less funky, normal app flow. All
+  wiring from `arc-frontend-test` kept (`lib/api.ts`, `lib/wallet/*`, one-tap v2 + approve-deposit v1,
+  claim/cancel fallbacks, publish, counter feed, routes). Not pushed.
+- Customer: first-open role choice; tabs Coupons (rotating hero line, Ending soon, By shop, Just paid
+  out) and My promos; profile (balance, Add money, Merchant workspace switch, sign out). Card: seal +
+  price, odds %, "Free if ...", info icon, coupons left + Selling out, countdown, Buy. Checkout: tag,
+  odds, clock, sign in, balance, Add money (amount sheet, then a double-tap pay sheet; behind it
+  `POST /api/wallet/faucet`), one-tap pay. Receipt: big order code, live 4-step status, upside-only.
+- Shop: workspace (stats, Live/History, Edit, Counter, Collect fallback, drafts), New promo (live card
+  preview, game picker + underdog line suggestion, max odds 49% default, coupons + selling-out
+  threshold, cost to cover one sale computed as you type), counter (QR, odds, clock, orders, Served).
+- Client-side only, no API field yet (needs Rachel if we want it cross-device): role; coupon count and
+  selling-out threshold (proposed `promotion.coupons: { total, sold, sellingOutAt }`, the sample server
+  sends it); counter "Served" marks. Add money's amount is honored by the fixture only; the real faucet
+  drips Circle's fixed amount (limit reached -> faucet.circle.com fallback with the address).
+- Preview, no backend: `PORT=4030 node scripts/sample-api.mjs` and
+  `NEXT_ALLOWED_DEV_ORIGINS=<lan ip> NEXT_PUBLIC_WALLET_FIXTURE=1 NEXT_PUBLIC_API_URL=http://<lan ip>:4030 next dev -H 0.0.0.0 -p 3030`
+  (phone on the same wifi opens `http://<lan ip>:3030`). Sample promos are buyable in fixture mode now.
+- Verified: typecheck, lint, format:check, web build; every route at 390px with 0 console errors in
+  fixture mode (also over the LAN IP); headless flows: role pick, add money, buy, receipt, My promos,
+  shop sign-in, create + publish, edit, customer buys it, counter Served.
+
+### 2026-11-18 19:42 ET · Dev 3 Dylan (Claude) · branch `arc-frontend-test`
+
+- Frontend wired to `docs/FRONTEND-API.md` for the first real test purchase. Looks = Zahin's screens (from
+  `zahin-arc`); the redesign comes later from Dylan's feedback. Merged `origin/arc` (958ab10). Not pushed.
+- Checkout: `status.checkout === "one-tap"` → `POST /sign` → Circle signs (signature from `sdk.execute`'s
+  `result.data.signature`) → `POST /submit` (relayer pays gas, retried on 503) → live receipt. `approve-deposit`
+  kept as the v1 fallback. Wired: `initialize` (drafts publish from any browser), counter feed (`orderCode`),
+  `GET /api/purchases?customer=` (My purchases), `claim-merchant` (one approval per challenge), `claim-refund`,
+  `cancel-expired` (still PROCESSING 10+ min). `autoPayout: true` hides claim buttons; they come back only if a
+  payout sits 3+ minutes. Order numbers now match the API's `orderCode` (last 4 chars). VOID not handled
+  (not in `@hedged/shared`).
+- Run it (repo root, two terminals). API: `API_PORT=4020 API_CORS_ORIGIN=http://localhost:3020 pnpm dev:api`
+  (reads `.env`; the log must say "Arc escrow v2: one-tap checkout and automatic payouts on"). Web: put
+  `NEXT_PUBLIC_API_URL=http://localhost:4020`, `NEXT_PUBLIC_CIRCLE_APP_ID=<the Circle App ID>` and
+  `NEXT_PUBLIC_ARC_ESCROW_ADDRESS=0xc7fe8ca11b1b5b2260aa7faa638c0ae233b44a39` in `apps/web/.env.local`, then
+  `pnpm --filter @hedged/web exec next dev -p 3020`. CORS: `API_CORS_ORIGIN` is a comma-separated list of exact
+  web origins (no trailing slash), e.g. `http://localhost:3020,https://<deployed web>`; every origin the web is
+  opened from must be in it. Test purchase: shop logs in at `/merchant/new`, picks a SOL window, publishes (one
+  approval); customer opens `/checkout/<id>`, logs in, adds test USDC, pays (one approval), lands on the receipt.
+  Only one backend may run the relayer key at a time.
+- No-backend preview: `PORT=4021 node scripts/sample-api.mjs` and
+  `NEXT_PUBLIC_WALLET_FIXTURE=1 NEXT_PUBLIC_API_URL=http://localhost:4021 pnpm --filter @hedged/web exec next dev -p 3021`.
+  Both act like escrow v2; v1 shapes: `SAMPLE_ESCROW=v1`, and `localStorage["hedged:fixture:escrow"]="v1"`.
+- Verified: typecheck, lint, format, web build, api tests (94 pass, 1 skipped). Real API + web: every route
+  renders with no console errors (only expected 404s while a made-up receipt polls); email login reaches Circle's
+  code screen (SMTP works now). Not done: a real paid purchase (needs a person to type the email code; no v2
+  promo is live, the two live promos are old Solana ones). Fixture run: 2 publishes, one-tap pay, v1 pay,
+  counter, My purchases, YES (v1 claim + v2 auto refund), NO (shop collect), 0 console errors.
+
 ### 2026-11-18 13:45 ET · Dev 4 Rachel · branch `arc-v2-api`
 
 - API now uses escrow v2 when `ARC_ESCROW_ADDRESS` is v2 and `SOLANA_GATEWAY=arc` (detected at startup, logged):
@@ -37,6 +110,23 @@ laptops and accounts and cannot message each other; this file, carried by git, i
   errors, env). Build against the real API, not `scripts/sample-api.mjs`.
 - New optional migration `20261119000000_purchases_by_customer.sql` (index). Tests: api 89 pass, Supabase store contract pass.
 - Still open: Circle SMTP for email codes (Rachel); v2 integration once `arc-contract-v2` is pushed (Dylan).
+
+### 2026-11-18 11:52 EST · Dev 3 Dylan (Claude) · branch `zahin-arc`
+
+- Zahin's screens on the prototype's Arc + Circle wiring, for Zahin to review; not merged. Base:
+  `frontend-prototype-unsteered`; design from `origin/zahin` (1bf6035). No Solana code left in apps/web.
+- Live-wired: home preview (selling promo, else Zahin's sample), `/checkout/[promoId]` (email login, approve +
+  deposit), `/purchases/[key]` (live receipt, refund claim), `/merchant` (dashboard), `/merchant/new` (market
+  picker, live quote, publish), `/merchant/claims` (settlements, merchant claim). Kept and restyled: `/discover`,
+  `/me`, `/counter/[promoId]`. No-backend mode is still `NEXT_PUBLIC_WALLET_FIXTURE=1`.
+- Needs from Dev 4 (backend routes missing; the UI calls them and says "not on this server yet" on 404):
+  - `POST /api/promotions/:id/initialize` (shop approves creating the promo on Arc)
+  - `GET /api/promotions/:id/purchases` (claims page, counter feed; falls back to Arc reads if
+    `NEXT_PUBLIC_ARC_ESCROW_ADDRESS` is set)
+  - `POST /api/purchases/:id/claim-refund` and `POST /api/purchases/claim-merchant`
+  - No promo name/description fields on the API, so the shop name and item stand in for them.
+- Checked: web typecheck, repo lint, format, `next build`; every route 200; headless fixture run (publish, pay,
+  receipt, NO resolution, merchant claim) with 0 console errors.
 
 ### 2026-11-18 04:56 ET · Dev 3 Dylan · branches `frontend-prototype-unsteered`, `arc-contract-v2`
 
