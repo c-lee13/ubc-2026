@@ -217,6 +217,7 @@ export function CreatePromo() {
         depositDeadline: deadline,
         maxYesPriceMicroUsd: capMicro,
         hedgeBudget,
+        coupons,
       });
       const id = created.promotion.id;
       registerCoupons(id, coupons);

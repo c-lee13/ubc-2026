@@ -1,4 +1,4 @@
-import type { PromotionDto } from "./api";
+import { isSoldOut, type PromotionDto } from "./api";
 import { conditionText } from "./format";
 
 /** How a promo reads to a customer: odds, the condition, its selling state. Pure. */
@@ -77,7 +77,7 @@ export function sellState(p: PromotionDto, now: number | null): SellState {
   if (phase === "WAITING_FOR_RESULT" || (now !== null && now >= p.depositDeadline))
     return { kind: "closed" };
   if (phase === "PAUSED")
-    return p.live?.pauseReason === "BUDGET_USED" ? { kind: "soldout" } : { kind: "paused" };
+    return isSoldOut(p.live?.pauseReason) ? { kind: "soldout" } : { kind: "paused" };
   if (phase === "LIVE") return { kind: "selling" };
   return { kind: "paused" };
 }

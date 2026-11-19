@@ -94,7 +94,8 @@ function CustomerCoupons() {
   const router = useRouter();
   const params = useSearchParams();
   const view = params.get("view") === "map" ? "map" : "list";
-  const res = usePoll(() => api.promotions(), 15_000);
+  // Every 5 s: new promos appear and the odds (fresh from Gemini on each call) move on their own.
+  const res = usePoll(() => api.promotions(), 5_000);
   const now = useNowSeconds();
   useCouponRegistry();
   const promos = useMemo(() => (res.data?.promotions ?? []) as Promo[], [res.data]);
@@ -140,7 +141,10 @@ function CustomerCoupons() {
             </button>
           ))}
         </div>
-        {view === "map" ? <span className="text-[12.5px] text-ink-soft">Austin</span> : null}
+        <div className="flex items-center gap-3">
+          {view === "map" ? <span className="text-[12.5px] text-ink-soft">Austin</span> : null}
+          <LiveBadge res={res} now={now} />
+        </div>
       </div>
       {view === "map" ? (
         res.data ? (
@@ -155,6 +159,31 @@ function CustomerCoupons() {
         </>
       )}
     </CustomerShell>
+  );
+}
+
+/** Pulsing dot + how long ago the last refresh landed, so it's clear the list is live. */
+function LiveBadge({ res, now }: { res: Polled<unknown>; now: number | null }) {
+  const stale = Boolean(res.error);
+  const ago =
+    res.updatedAt === null || now === null
+      ? null
+      : Math.max(0, now - Math.floor(res.updatedAt / 1000));
+  return (
+    <span
+      className="flex items-center gap-1.5 whitespace-nowrap text-[12px] font-semibold text-ink-soft"
+      title="Promos and odds refresh from Gemini every few seconds"
+    >
+      <span className="relative grid size-2 place-items-center">
+        {stale ? null : <span className="live-ping absolute inset-0 rounded-full bg-note" />}
+        <span className={`relative size-2 rounded-full ${stale ? "bg-ink-faint" : "bg-note"}`} />
+      </span>
+      {stale
+        ? "Reconnecting…"
+        : ago === null
+          ? "Live"
+          : `Live odds · ${ago < 2 ? "just now" : `${ago}s ago`}`}
+    </span>
   );
 }
 

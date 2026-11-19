@@ -12,6 +12,7 @@ import {
   stateText,
   whenText,
 } from "@/lib/promo-view";
+import { useChangeCount } from "@/lib/hooks";
 import { HowItWorksButton } from "./how-it-works";
 import { IconClock } from "./icons";
 import { Meter, Odds, Perforation } from "./kit";
@@ -31,10 +32,14 @@ export function CouponsLeft({
   className?: string;
 }) {
   const s = couponSupply(p, sold);
+  const changed = useChangeCount(s?.left);
   if (!s) return null;
   return (
     <div className={`min-w-0 ${className}`}>
-      <p className="text-[11px] font-semibold leading-none text-ink-soft">
+      <p
+        key={changed}
+        className={`-mx-1 px-1 text-[11px] font-semibold leading-none text-ink-soft ${changed ? "value-flash" : ""}`}
+      >
         {s.soldOut ? "Sold out" : `${s.left} left`}
       </p>
       <Meter value={s.left} max={s.total} className="mt-2 w-24" />
@@ -80,6 +85,7 @@ export function PromoCard({
 }) {
   const cond = condition(p);
   const odds = oddsPct(p.live?.liveAskMicroUsd);
+  const oddsChanged = useChangeCount(odds);
   const st = sellState(p, now);
   const selling = st.kind === "selling";
   const href = `/checkout/${p.id}`;
@@ -109,7 +115,12 @@ export function PromoCard({
               {sub === "kickoff" ? closesText(p.depositDeadline, now) : p.shop.name}
             </p>
           </div>
-          <Odds pct={odds} size={compact ? 20 : 23} label="chance" className="shrink-0" />
+          <span
+            key={oddsChanged}
+            className={`-m-1 shrink-0 p-1 ${oddsChanged ? "value-flash" : ""}`}
+          >
+            <Odds pct={odds} size={compact ? 20 : 23} label="chance" />
+          </span>
         </div>
         <p
           className={`font-wide mt-3 font-bold leading-snug ${compact ? "text-[14px]" : "text-[16px]"}`}

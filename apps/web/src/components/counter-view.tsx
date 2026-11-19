@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { PurchaseSummaryDto } from "@/lib/api";
+import { isSoldOut, type PurchaseSummaryDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { servedCodes, setServed } from "@/lib/coupons";
 import { describe } from "@/lib/errors";
@@ -87,7 +87,7 @@ export function CounterView({ promoId }: { promoId: string }) {
               <div className="absolute inset-0 grid place-items-center">
                 <span className="font-display rounded-xl bg-black px-4 py-2 text-[21.5px] text-white">
                   {p.live?.phase === "PAUSED"
-                    ? p.live.pauseReason === "BUDGET_USED"
+                    ? isSoldOut(p.live.pauseReason)
                       ? "Sold out"
                       : "Paused"
                     : "Sales closed"}

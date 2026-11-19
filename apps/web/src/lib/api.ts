@@ -19,7 +19,12 @@ import type {
 
 export type LivePhase = "LIVE" | "PAUSED" | "WAITING_FOR_RESULT" | "RESULT_YES" | "RESULT_NO";
 export type PauseReason =
-  "PRICE_ABOVE_THRESHOLD" | "PRICE_NEAR_THRESHOLD" | "BUDGET_USED" | "NO_LIVE_PRICE";
+  "PRICE_ABOVE_THRESHOLD" | "PRICE_NEAR_THRESHOLD" | "BUDGET_USED" | "SOLD_OUT" | "NO_LIVE_PRICE";
+
+/** Every coupon is taken: the shop's coupon count is reached (SOLD_OUT) or its budget is used. */
+export function isSoldOut(reason: PauseReason | null | undefined): boolean {
+  return reason === "SOLD_OUT" || reason === "BUDGET_USED";
+}
 
 export interface LiveStateDto {
   phase: LivePhase;
@@ -209,6 +214,8 @@ export interface CreatePromotionInput {
   depositDeadline: number;
   maxYesPriceMicroUsd: string;
   hedgeBudget: string;
+  /** How many coupons the shop offers (1-100,000); left out = no limit. */
+  coupons?: number;
 }
 
 export interface CreatePromotionDto {
@@ -507,6 +514,7 @@ const PAUSE_TEXT: Record<PauseReason, string> = {
   PRICE_ABOVE_THRESHOLD: "the market price is above what this shop pays to cover a refund",
   PRICE_NEAR_THRESHOLD: "the market price is right at the shop's limit",
   BUDGET_USED: "the shop has used its budget for covering refunds",
+  SOLD_OUT: "every coupon is taken",
   NO_LIVE_PRICE: "no one is selling this outcome on Gemini right now",
 };
 
@@ -613,11 +621,10 @@ export function describeApiError(err: unknown): { title: string; detail: string 
         };
       case "promo_not_buyable":
         return {
-          title: b.pauseReason === "BUDGET_USED" ? "Sold out" : "Back in a moment",
-          detail:
-            b.pauseReason === "BUDGET_USED"
-              ? "Every coupon for this promo is taken. Nothing was charged."
-              : "Sales paused for a moment. Nothing was charged; try again shortly.",
+          title: isSoldOut(b.pauseReason as PauseReason) ? "Sold out" : "Back in a moment",
+          detail: isSoldOut(b.pauseReason as PauseReason)
+            ? "Every coupon for this promo is taken. Nothing was charged."
+            : "Sales paused for a moment. Nothing was charged; try again shortly.",
         };
       case "not_an_arc_promotion":
         return {

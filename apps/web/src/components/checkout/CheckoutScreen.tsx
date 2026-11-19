@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ApiError, type CheckoutStatusDto, type PromotionDto } from "@/lib/api";
+import { ApiError, isSoldOut, type CheckoutStatusDto, type PromotionDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { publicConfig } from "@/lib/config";
 import { describe, type Problem } from "@/lib/errors";
@@ -201,7 +201,7 @@ function blockerFor(
       };
   }
   if (s && !s.canBuy) {
-    return s.pauseReason === "BUDGET_USED"
+    return isSoldOut(s.pauseReason)
       ? { title: "Sold out", detail: "Every coupon is taken." }
       : {
           title: "Back in a moment",

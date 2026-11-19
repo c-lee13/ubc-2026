@@ -6,6 +6,8 @@ export interface Polled<T> {
   data: T | undefined;
   error: unknown;
   loading: boolean;
+  /** When the last successful fetch landed (ms since epoch); null before the first one. */
+  updatedAt: number | null;
   refresh: () => void;
 }
 
@@ -21,6 +23,7 @@ export function usePoll<T>(
   const [data, setData] = useState<T | undefined>(undefined);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState<boolean>(fn !== null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [tick, setTick] = useState(0);
   const fnRef = useRef(fn);
   fnRef.current = fn;
@@ -39,6 +42,7 @@ export function usePoll<T>(
         if (!alive) return;
         setData(v);
         setError(null);
+        setUpdatedAt(Date.now());
       } catch (e) {
         if (!alive) return;
         setError(e);
@@ -56,7 +60,23 @@ export function usePoll<T>(
   }, [intervalMs, tick, ...key]);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
-  return { data, error, loading, refresh };
+  return { data, error, loading, updatedAt, refresh };
+}
+
+/**
+ * Counts how many times `value` has changed since mount (0 until the first change). Use it as a
+ * React `key` to replay a one-shot animation, e.g. flash the odds when a poll brings a new price.
+ */
+export function useChangeCount(value: unknown): number {
+  const prev = useRef(value);
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (!Object.is(prev.current, value)) {
+      prev.current = value;
+      setN((x) => x + 1);
+    }
+  }, [value]);
+  return n;
 }
 
 /** Current unix seconds, ticking. Null on the server and first client render (no hydration drift). */
