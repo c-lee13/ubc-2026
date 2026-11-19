@@ -14,6 +14,35 @@ laptops and accounts and cannot message each other; this file, carried by git, i
 
 ## Log (newest first)
 
+### 2026-11-18 19:42 ET · Dev 3 Dylan (Claude) · branch `arc-frontend-test`
+
+- Frontend wired to `docs/FRONTEND-API.md` for the first real test purchase. Looks = Zahin's screens (from
+  `zahin-arc`); the redesign comes later from Dylan's feedback. Merged `origin/arc` (958ab10). Not pushed.
+- Checkout: `status.checkout === "one-tap"` → `POST /sign` → Circle signs (signature from `sdk.execute`'s
+  `result.data.signature`) → `POST /submit` (relayer pays gas, retried on 503) → live receipt. `approve-deposit`
+  kept as the v1 fallback. Wired: `initialize` (drafts publish from any browser), counter feed (`orderCode`),
+  `GET /api/purchases?customer=` (My purchases), `claim-merchant` (one approval per challenge), `claim-refund`,
+  `cancel-expired` (still PROCESSING 10+ min). `autoPayout: true` hides claim buttons; they come back only if a
+  payout sits 3+ minutes. Order numbers now match the API's `orderCode` (last 4 chars). VOID not handled
+  (not in `@hedged/shared`).
+- Run it (repo root, two terminals). API: `API_PORT=4020 API_CORS_ORIGIN=http://localhost:3020 pnpm dev:api`
+  (reads `.env`; the log must say "Arc escrow v2: one-tap checkout and automatic payouts on"). Web: put
+  `NEXT_PUBLIC_API_URL=http://localhost:4020`, `NEXT_PUBLIC_CIRCLE_APP_ID=<the Circle App ID>` and
+  `NEXT_PUBLIC_ARC_ESCROW_ADDRESS=0xc7fe8ca11b1b5b2260aa7faa638c0ae233b44a39` in `apps/web/.env.local`, then
+  `pnpm --filter @hedged/web exec next dev -p 3020`. CORS: `API_CORS_ORIGIN` is a comma-separated list of exact
+  web origins (no trailing slash), e.g. `http://localhost:3020,https://<deployed web>`; every origin the web is
+  opened from must be in it. Test purchase: shop logs in at `/merchant/new`, picks a SOL window, publishes (one
+  approval); customer opens `/checkout/<id>`, logs in, adds test USDC, pays (one approval), lands on the receipt.
+  Only one backend may run the relayer key at a time.
+- No-backend preview: `PORT=4021 node scripts/sample-api.mjs` and
+  `NEXT_PUBLIC_WALLET_FIXTURE=1 NEXT_PUBLIC_API_URL=http://localhost:4021 pnpm --filter @hedged/web exec next dev -p 3021`.
+  Both act like escrow v2; v1 shapes: `SAMPLE_ESCROW=v1`, and `localStorage["hedged:fixture:escrow"]="v1"`.
+- Verified: typecheck, lint, format, web build, api tests (94 pass, 1 skipped). Real API + web: every route
+  renders with no console errors (only expected 404s while a made-up receipt polls); email login reaches Circle's
+  code screen (SMTP works now). Not done: a real paid purchase (needs a person to type the email code; no v2
+  promo is live, the two live promos are old Solana ones). Fixture run: 2 publishes, one-tap pay, v1 pay,
+  counter, My purchases, YES (v1 claim + v2 auto refund), NO (shop collect), 0 console errors.
+
 ### 2026-11-18 13:45 ET · Dev 4 Rachel · branch `arc-v2-api`
 
 - API now uses escrow v2 when `ARC_ESCROW_ADDRESS` is v2 and `SOLANA_GATEWAY=arc` (detected at startup, logged):
