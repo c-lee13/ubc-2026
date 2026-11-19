@@ -16,6 +16,7 @@ import {
   type LocalDraft,
 } from "@/lib/merchant";
 import { NEIGHBORHOODS, placeIn, rememberShopPlace } from "@/lib/places";
+import { HOOD_KEY } from "@/lib/role";
 import { oddsPct } from "@/lib/promo-view";
 import { useWallet } from "@/lib/wallet/session";
 import { IconBack, IconCheck, IconMinus, IconPlus } from "../icons";
@@ -81,6 +82,8 @@ export function CreatePromo() {
       setShopName(saved.shopName);
       setItemName(saved.itemName);
     }
+    const savedHood = store.get<string>(HOOD_KEY);
+    if (savedHood && NEIGHBORHOODS.some((n) => n.name === savedHood)) setHood(savedHood);
   }, []);
 
   const onPick = useCallback((m: PickedMarket) => {
