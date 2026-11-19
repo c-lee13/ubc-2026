@@ -2,14 +2,14 @@
 
 import type { Role } from "@/lib/role";
 import { IconChevron, IconStore, IconTicket } from "./icons";
-import { Mark } from "./kit";
+import { Wordmark } from "./kit";
 
 /** First open: which side of the app is this? (Changeable later from the profile.) */
 export function RolePick({ onPick }: { onPick: (r: Role) => void }) {
   return (
     <main className="relative min-h-dvh overflow-hidden">
       <div className="relative mx-auto flex min-h-dvh w-full max-w-[480px] flex-col px-6 pb-10 pt-[16dvh]">
-        <Mark className="h-16 self-start" />
+        <Wordmark size={34} className="self-start" />
         <h1 className="font-display mt-8 text-[56px] leading-[0.92]">
           Win and
           <br />

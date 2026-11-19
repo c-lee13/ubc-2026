@@ -17,7 +17,7 @@ import { useWallet } from "@/lib/wallet/session";
 import { AddMoneySheet } from "../add-money";
 import { HowItWorksButton } from "../how-it-works";
 import { IconCheck, IconClose, IconWallet } from "../icons";
-import { Button, Mark, Note, Odds, Spinner } from "../kit";
+import { Button, Note, Odds, Spinner, Wordmark } from "../kit";
 import { LoginCard } from "../login-card";
 import { CouponsLeft, closesText, type Promo } from "../promo-card";
 import { Voucher } from "../voucher";
@@ -46,7 +46,7 @@ export function CheckoutScreen({ promoId }: { promoId: string }) {
         >
           <IconClose size={22} />
         </Link>
-        <Mark className="h-6" />
+        <Wordmark size={18} />
         {p ? (
           <HowItWorksButton
             item={p.itemName.toLowerCase()}

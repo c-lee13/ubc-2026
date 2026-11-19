@@ -7,7 +7,7 @@ import { describe, type Problem } from "@/lib/errors";
 import { usd } from "@/lib/format";
 import { useWallet } from "@/lib/wallet/session";
 import { IconCheck } from "./icons";
-import { Button, Mark, Note, Sheet } from "./kit";
+import { Button, Note, Sheet, Wordmark } from "./kit";
 
 /**
  * Add money to the prepaid balance: pick an amount, then a phone-style pay sheet (double-tap to
@@ -127,7 +127,7 @@ export function AddMoneySheet({
       <div className="relative">
         <div className="flex items-center justify-between">
           <span id="paysheet-title" className="flex items-center gap-2 text-[15px] font-semibold">
-            <Mark className="h-5" /> Wincentive
+            <Wordmark size={17} />
           </span>
           {stage === "pay" ? (
             <button

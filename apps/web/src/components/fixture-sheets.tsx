@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { publicConfig } from "@/lib/config";
 import { onFixtureSheet, type FixtureSheet } from "@/lib/wallet/fixture-bus";
-import { Button, INPUT, Mark } from "./kit";
+import { Button, INPUT, Wordmark } from "./kit";
 
 /**
  * DEV-ONLY stand-ins for Circle's own screens (email code, approval) in fixture mode
@@ -26,7 +26,7 @@ export function FixtureSheets() {
     >
       <div className="w-full max-w-[480px] animate-sheet-up rounded-t-[28px] bg-paper-raised px-5 pb-8 pt-5 ring-1 ring-rule sm:rounded-[28px]">
         <div className="mb-4 flex items-center gap-2 text-[14px] font-semibold text-ink-soft">
-          <Mark className="h-5" /> Wincentive
+          <Wordmark size={17} />
         </div>
         {sheet.kind === "otp" ? (
           <form

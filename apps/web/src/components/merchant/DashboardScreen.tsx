@@ -103,7 +103,7 @@ export function DashboardScreen({ viewAs }: { viewAs: string | null }) {
       <header className="sticky top-0 z-30 border-b border-rule/70 bg-paper/80 backdrop-blur-xl">
         <Column className="flex h-[60px] items-center justify-between px-4">
           <Link href="/merchant" className="flex items-center gap-2.5">
-            <Wordmark />
+            <Wordmark size={21} />
           </Link>
           <ProfileButton balance={false} />
         </Column>

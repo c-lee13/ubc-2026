@@ -19,11 +19,35 @@ export function Mark({ className = "h-7" }: { className?: string }) {
   );
 }
 
-export function Wordmark({ className = "" }: { className?: string }) {
+/**
+ * The name lockup: the mark IS the W, followed by "incentive". Geometry from the 240x168 mark:
+ * the W body spans rows 69-161 (so it matches Archivo's 0.687em cap height at 1.255em tall), it
+ * starts at x=8, and the price tag reaches x=213 at the height of the i's dot. All in em, so it
+ * scales with `size`.
+ */
+export function Wordmark({ size = 20, className = "" }: { size?: number; className?: string }) {
   return (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
-      <Mark className="h-[26px]" />
-      <span className="font-title text-[19px] tracking-[-0.03em]">Wincentive</span>
+    <span
+      role="img"
+      aria-label="Wincentive"
+      className={`font-title inline-block whitespace-nowrap leading-none tracking-[-0.02em] ${className}`}
+      style={{ fontSize: size }}
+    >
+      <img
+        src="/wincentive-mark-clear.png"
+        alt=""
+        aria-hidden
+        draggable={false}
+        className="inline-block select-none"
+        style={{
+          height: "1.255em",
+          width: "auto",
+          verticalAlign: "-0.052em",
+          marginLeft: "-0.06em",
+          marginRight: "-0.255em",
+        }}
+      />
+      <span aria-hidden>incentive</span>
     </span>
   );
 }

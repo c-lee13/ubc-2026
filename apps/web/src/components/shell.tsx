@@ -43,7 +43,7 @@ export function TopBar({ right }: { right?: ReactNode }) {
     <header className="sticky top-0 z-30 border-b border-rule/70 bg-paper/80 backdrop-blur-xl">
       <Column className="flex h-[60px] items-center justify-between px-4">
         <Link href="/" aria-label="Wincentive home">
-          <Wordmark />
+          <Wordmark size={21} />
         </Link>
         {right ?? <ProfileButton />}
       </Column>

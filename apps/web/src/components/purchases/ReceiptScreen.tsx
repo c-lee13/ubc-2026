@@ -21,7 +21,7 @@ import {
 } from "@/lib/purchases";
 import { useWallet } from "@/lib/wallet/session";
 import { IconCheck, IconClose } from "../icons";
-import { Button, Mark, Note, Spinner } from "../kit";
+import { Button, Note, Spinner, Wordmark } from "../kit";
 
 // The live receipt (Dylan's prototype receipt: ribbon header with the order code, a timeline with
 // pink checks), upside-only words. Polls GET /api/purchases/:key (docs/FRONTEND-API.md "Receipt").
@@ -56,7 +56,7 @@ export function ReceiptScreen({
         >
           <IconClose size={22} />
         </Link>
-        <Mark className="h-6" />
+        <Wordmark size={18} />
         <span className="w-10" />
       </header>
       {r ? (

@@ -6,11 +6,11 @@ import type { PurchaseSummaryDto } from "@/lib/api";
 import { api } from "@/lib/client";
 import { servedCodes, setServed } from "@/lib/coupons";
 import { describe } from "@/lib/errors";
-import { clock, displayCode } from "@/lib/format";
+import { clock, countdown, displayCode } from "@/lib/format";
 import { useNowSeconds, useOrigin, usePoll } from "@/lib/hooks";
 import { condition, oddsPct, price, shortCountdown } from "@/lib/promo-view";
 import { IconBack, IconCheck } from "./icons";
-import { Note, Spinner } from "./kit";
+import { Note, Spinner, Wordmark } from "./kit";
 import { CouponsLeft, type Promo } from "./promo-card";
 import { QrCode } from "./qr";
 
@@ -67,7 +67,7 @@ export function CounterView({ promoId }: { promoId: string }) {
           >
             <IconBack size={22} />
           </Link>
-          <p className="text-[14px] font-semibold text-ink-soft">Counter</p>
+          <Wordmark size={18} />
           <span className="w-10" />
         </header>
         <section className="rounded-[28px] bg-paper-raised p-5 ring-1 ring-inset ring-rule">
@@ -107,9 +107,21 @@ export function CounterView({ promoId }: { promoId: string }) {
                 </div>
                 <div>
                   <p className="font-num text-[44px] lg:text-[56px]">
-                    {now !== null ? shortCountdown(p.depositDeadline - now) : "–"}
+                    {now === null
+                      ? "–"
+                      : p.depositDeadline - now > 12 * 3600
+                        ? new Date(p.depositDeadline * 1000).toLocaleDateString("en-US", {
+                            weekday: "short",
+                          })
+                        : p.depositDeadline - now < 3600
+                          ? countdown(p.depositDeadline - now)
+                          : shortCountdown(p.depositDeadline - now)}
                   </p>
-                  <p className="mt-1 text-[14px] text-ink-soft">left to buy</p>
+                  <p className="mt-1 text-[14px] text-ink-soft">
+                    {now !== null && p.depositDeadline - now > 12 * 3600
+                      ? `kickoff ${clock(p.depositDeadline)}`
+                      : "left to buy"}
+                  </p>
                 </div>
               </div>
               <div className="mt-4 flex justify-center">
