@@ -27,6 +27,7 @@ const row = (p: Partial<PromotionRow> = {}): PromotionRow => ({
   outcomeLabel: "x",
   maxYesPriceMicroUsd: 500_000n,
   hedgeBudget: 100_000_000n,
+  couponTotal: null,
   reservedPremium: 0n,
   resolvedOutcome: null,
   resolveTxSignature: null,

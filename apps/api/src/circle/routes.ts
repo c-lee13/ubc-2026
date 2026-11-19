@@ -18,7 +18,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Address, Hex } from "viem";
 import { canonical } from "../chain-ids";
 import type { GeminiAdapter } from "../gemini/adapter";
-import { liveState } from "../promotions/live-state";
+import { liveState, soldCoupons } from "../promotions/live-state";
 import type { Store } from "../store/types";
 import type { ArcReads } from "./arc-reads";
 import { ALREADY_INITIALIZED, CircleError, type CircleClient } from "./client";
@@ -609,7 +609,9 @@ export function registerCircleRoutes(app: FastifyInstance, deps: CircleRouteDeps
       .getQuote(promo.geminiMarketId)
       .then((q) => BigInt(q.quote.yesAskMicroUsd))
       .catch(() => null);
-    const live = liveState(promo, ask, nowUnix());
+    const sold =
+      promo.couponTotal === null ? 0 : soldCoupons(await deps.store.listPurchases(promo.id));
+    const live = liveState(promo, ask, nowUnix(), sold);
     const [allowance, balance] = await Promise.all([
       deps.arc!.reads.allowance(wallet.address),
       deps.arc!.reads.balance(wallet.address),

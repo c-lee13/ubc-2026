@@ -44,8 +44,9 @@ The same login works for shops and customers; the role is just which screens the
    - `GET /api/markets/:id/deadline-check?depositDeadline=<unix>` → `{ ok, latest, reason? }`: the
      sales deadline must be before kickoff.
 2. `POST /api/promotions` `{ merchant: <wallet address>, shopName, location?, itemName, geminiMarketId,
-outcomeLabel?, offerAmount, depositDeadline, maxYesPriceMicroUsd, hedgeBudget }` → `201 { promotion }`
-   (status `DRAFT`). `400` names the bad field; `422 invalid_deposit_deadline` with `latest`.
+outcomeLabel?, offerAmount, depositDeadline, maxYesPriceMicroUsd, hedgeBudget, coupons? }` → `201 { promotion }`
+   (status `DRAFT`). `coupons` is optional: how many the shop offers, a whole number 1-100,000; leave
+   it out for no limit. `400` names the bad field; `422 invalid_deposit_deadline` with `latest`.
 3. 🔑 `POST /api/promotions/:id/initialize` `{ walletId }` → `{ challengeId, promoPda, confirm }`.
    `sdk.execute(challengeId)`.
 4. `POST /api/promotions/:id/confirm` `{ promoPda }` → `{ promotion }` (status `ACTIVE`). Retry every
@@ -156,12 +157,14 @@ https://faucet.circle.com (Arc Testnet) with their address.
 ## Shapes
 
 **promotion** (public): `{ id, status: "DRAFT" | "ACTIVE", promoPda, shop: { merchant, name, location },
-itemName, offerAmount, outcomeLabel, geminiMarketId, depositDeadline, onChainState, live }`.
+itemName, offerAmount, outcomeLabel, geminiMarketId, depositDeadline, onChainState, coupons, live }`.
+`coupons` is `{ total, sold }` when the shop set a count, else null. `sold` leaves out refunded and
+cancelled purchases, so a refund gives a coupon back. Public: every phone can show "64 left".
 `live` is null for drafts, else `{ phase, pauseReason, canBuy, liveAskMicroUsd, costPerSale }`.
 
 - `phase`: `LIVE` (selling) · `PAUSED` · `WAITING_FOR_RESULT` (deadline passed) · `RESULT_YES` · `RESULT_NO`.
 - `pauseReason`: `PRICE_ABOVE_THRESHOLD` · `PRICE_NEAR_THRESHOLD` (within 2¢ of the shop's max) ·
-  `BUDGET_USED` · `NO_LIVE_PRICE` · null.
+  `BUDGET_USED` · `SOLD_OUT` (every coupon sold; show it like `BUDGET_USED`) · `NO_LIVE_PRICE` · null.
 - `liveAskMicroUsd` is the market's implied chance the item ends up free.
 
 **purchase summary** (lists): `{ purchasePda, orderCode, customer, amount, depositedAt, status,
