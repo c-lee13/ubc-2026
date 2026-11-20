@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ApiError, type WalletDto } from "../api";
+import { ApiError, ApiUnreachableError, type WalletDto } from "../api";
 import { api, setUserToken } from "../client";
 import { publicConfig } from "../config";
 import { describe, type Problem } from "../errors";
@@ -24,7 +24,11 @@ import {
 /**
  * The signed-in person: email login through Circle (docs/email-wallets.md), their Arc wallet, and
  * `execute` to approve any challenge the API hands back. The browser keeps only Circle's userToken
- * (plus its encryption key, which the SDK needs), in sessionStorage: gone when the tab closes.
+ * (plus its encryption key, which the SDK needs, and the email), in localStorage, so a login survives
+ * closing the tab or restarting the phone. Circle's userToken still expires on Circle's clock: the
+ * first API call after that answers `circle_session_invalid` / `login_required`, which signs out
+ * cleanly and shows the login again. (Circle's refresh endpoint needs our API key, so the browser
+ * can't extend a session by itself.) Signing out, here or in another tab, clears it.
  */
 export type Phase = "signed-out" | "sending-code" | "awaiting-code" | "creating-wallet" | "ready";
 
@@ -52,6 +56,50 @@ const DEVICE_KEY = "hedged:circle-device-id";
 
 interface Stored extends CircleSession {
   email: string;
+}
+
+/** Circle's user-token errors (expired, invalid, not found, malformed, mismatched). */
+const CIRCLE_TOKEN_CODES = new Set([155103, 155104, 155105, 155718, 155719]);
+
+/** The API says this Circle session is over: the person has to log in again. */
+function sessionGone(err: unknown): err is ApiError {
+  return (
+    err instanceof ApiError &&
+    (err.code === "circle_session_invalid" ||
+      err.code === "login_required" ||
+      (err.code === "circle_error" && CIRCLE_TOKEN_CODES.has(Number(err.body.code))))
+  );
+}
+
+function readStored(): Stored | null {
+  try {
+    // Older builds kept it in sessionStorage under the same key; drop that copy.
+    sessionStorage.removeItem(SESSION_KEY);
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Partial<Stored>;
+    if (typeof s.userToken === "string" && typeof s.encryptionKey === "string" && s.email) {
+      return { userToken: s.userToken, encryptionKey: s.encryptionKey, email: s.email };
+    }
+  } catch {
+    // Storage blocked or a damaged entry: treat as signed out.
+  }
+  clearStored();
+  return null;
+}
+function writeStored(s: Stored): void {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  } catch {
+    // Private mode or full storage: the login still works for this page, it just won't stick.
+  }
+}
+function clearStored(): void {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // nothing stored
+  }
 }
 
 export function WalletSessionProvider({ children }: { children: ReactNode }) {
@@ -84,7 +132,7 @@ export function WalletSessionProvider({ children }: { children: ReactNode }) {
   }, [fixture]);
 
   const signOut = useCallback((p: Problem | null) => {
-    sessionStorage.removeItem(SESSION_KEY);
+    clearStored();
     setUserToken(null);
     setWallet(null);
     setEmail(null);
@@ -95,12 +143,7 @@ export function WalletSessionProvider({ children }: { children: ReactNode }) {
   /** Any API/wallet error: an expired Circle session sends the person back to the login. */
   const handle = useCallback(
     (err: unknown): never => {
-      if (
-        err instanceof ApiError &&
-        (err.code === "circle_session_invalid" || err.code === "login_required")
-      ) {
-        signOut(describe(err));
-      }
+      if (sessionGone(err)) signOut(describe(err));
       throw err;
     },
     [signOut],
@@ -117,16 +160,10 @@ export function WalletSessionProvider({ children }: { children: ReactNode }) {
     }
   }, [handle]);
 
-  // Restore a session from this tab.
+  // Restore the saved session (survives tab close and restarts).
   useEffect(() => {
-    let raw: string | null = null;
-    try {
-      raw = sessionStorage.getItem(SESSION_KEY);
-    } catch {
-      raw = null;
-    }
-    if (!raw) return;
-    const s = JSON.parse(raw) as Stored;
+    const s = readStored();
+    if (!s) return;
     setUserToken(s.userToken);
     setEmail(s.email);
     setPhase("creating-wallet");
@@ -134,16 +171,32 @@ export function WalletSessionProvider({ children }: { children: ReactNode }) {
       try {
         (await driver()).setAuthentication(s);
         const w = await refreshWallet();
-        setPhase(w ? "ready" : "signed-out");
+        if (w) setPhase("ready");
+        else signOut(null);
       } catch (err) {
-        if (!(err instanceof ApiError)) signOut(describe(err));
-        else if (err.code !== "circle_session_invalid" && err.code !== "login_required") {
+        if (sessionGone(err)) return; // handle() already signed out and said why.
+        if (err instanceof ApiUnreachableError) {
+          // Offline or the server is down: keep the saved login for the next visit.
+          setUserToken(null);
+          setEmail(null);
+          setPhase("signed-out");
+          setProblem(describe(err));
+        } else if (err instanceof ApiError) {
           setPhase("ready");
           setProblem(describe(err));
-        }
+        } else signOut(describe(err));
       }
     })();
   }, [driver, refreshWallet, signOut]);
+
+  // Signed out in another tab: sign out here too.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SESSION_KEY && e.newValue === null) signOut(null);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [signOut]);
 
   const login = useCallback(
     async (addr: string) => {
@@ -152,20 +205,24 @@ export function WalletSessionProvider({ children }: { children: ReactNode }) {
       try {
         const d = await driver();
         // 1. Device id (cached per browser).
-        let deviceId = localStorage.getItem(DEVICE_KEY);
-        if (!deviceId) {
-          deviceId = await d.getDeviceId();
-          localStorage.setItem(DEVICE_KEY, deviceId);
+        let cachedId = localStorage.getItem(DEVICE_KEY);
+        if (!cachedId) {
+          cachedId = await d.getDeviceId();
+          localStorage.setItem(DEVICE_KEY, cachedId);
         }
+        const deviceId = cachedId;
         // 2. Our API starts Circle's email login.
         const start = await api.emailLogin(addr.trim(), deviceId);
-        // 3. Circle's code screen; the callback gives the user session.
+        // 3. Circle's code screen; the callback gives the user session. Its "Resend" button asks
+        //    our API for a fresh code the same way.
         setPhase("awaiting-code");
-        const session = await d.verifyEmail(start, addr.trim());
+        const session = await d.verifyEmail(start, addr.trim(), () =>
+          api.emailLogin(addr.trim(), deviceId),
+        );
         // 4. Authenticate the SDK and our API calls.
         d.setAuthentication(session);
         setUserToken(session.userToken);
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, email: addr.trim() }));
+        writeStored({ ...session, email: addr.trim() });
         setEmail(addr.trim());
         // 5. First visit: create the Arc wallet (a challenge the person approves).
         setPhase("creating-wallet");
@@ -192,7 +249,7 @@ export function WalletSessionProvider({ children }: { children: ReactNode }) {
         setPhase("ready");
       } catch (err) {
         const p = describe(err);
-        sessionStorage.removeItem(SESSION_KEY);
+        clearStored();
         setUserToken(null);
         setPhase("signed-out");
         setProblem(p);

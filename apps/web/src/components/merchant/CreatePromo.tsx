@@ -16,6 +16,7 @@ import {
   type LocalDraft,
 } from "@/lib/merchant";
 import { NEIGHBORHOODS, placeIn, rememberShopPlace } from "@/lib/places";
+import { HOOD_KEY } from "@/lib/role";
 import { oddsPct } from "@/lib/promo-view";
 import { useWallet } from "@/lib/wallet/session";
 import { IconBack, IconCheck, IconMinus, IconPlus } from "../icons";
@@ -81,6 +82,8 @@ export function CreatePromo() {
       setShopName(saved.shopName);
       setItemName(saved.itemName);
     }
+    const savedHood = store.get<string>(HOOD_KEY);
+    if (savedHood && NEIGHBORHOODS.some((n) => n.name === savedHood)) setHood(savedHood);
   }, []);
 
   const onPick = useCallback((m: PickedMarket) => {
@@ -294,7 +297,7 @@ export function CreatePromo() {
         <PromoCard p={preview} now={now} />
       </div>
 
-      <Section title="The offer">
+      <Section n={1} title="The offer">
         <Field label="Shop name">
           <input
             className={`${INPUT} h-12`}
@@ -343,7 +346,7 @@ export function CreatePromo() {
         </div>
       </Section>
 
-      <Section title="The game">
+      <Section n={2} title="The game">
         <MarketPicker selected={picked} onPick={onPick} maxPct={maxPct} />
         {overMax && game ? (
           <div className="rounded-[18px] bg-surface-2 p-4 ring-1 ring-inset ring-rule">
@@ -417,7 +420,7 @@ export function CreatePromo() {
         ) : null}
       </Section>
 
-      <Section title="Underdog limit" hint="Under 50% keeps it an underdog.">
+      <Section n={3} title="Underdog limit" hint="Under 50% keeps it an underdog.">
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-[12px] text-ink-soft">Chance now</p>
@@ -442,7 +445,7 @@ export function CreatePromo() {
         <p className="text-[12px] text-ink-soft">Sales pause above your max.</p>
       </Section>
 
-      <Section title="Coupons">
+      <Section n={4} title="Coupons">
         <Stepper
           label="How many coupons"
           value={coupons}
@@ -517,12 +520,33 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+function Section({
+  n,
+  title,
+  hint,
+  children,
+}: {
+  n: number;
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
     <section className="mt-8 space-y-3">
-      <div>
-        <h2 className="font-title text-[18px]">{title}</h2>
-        {hint ? <p className="text-[12.5px] text-ink-soft">{hint}</p> : null}
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className="font-num mt-px grid h-7 w-7 shrink-0 place-items-center rounded-full bg-surface-2 text-[13px] text-ink ring-1 ring-inset ring-rule"
+        >
+          {n}
+        </span>
+        <div>
+          <h2 className="font-title text-[18px]">
+            <span className="sr-only">Step {n}: </span>
+            {title}
+          </h2>
+          {hint ? <p className="text-[12.5px] text-ink-soft">{hint}</p> : null}
+        </div>
       </div>
       {children}
     </section>

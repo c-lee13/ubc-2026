@@ -418,6 +418,27 @@
     opacity: 1;
   }
 }
+/* The auto double-click: the side pill pushes in twice, quickly, like a real button press. */
+@keyframes ios-side-press {
+  0%,
+  100% {
+    transform: translateX(0) scaleY(1);
+    opacity: 1;
+  }
+  18%,
+  58% {
+    transform: translateX(3px) scaleY(0.9);
+    opacity: 0.55;
+  }
+  36%,
+  78% {
+    transform: translateX(0) scaleY(1);
+    opacity: 1;
+  }
+}
+.ios-side-press {
+  animation: ios-side-press 480ms ease-in-out both;
+}
 .ios-side-pill {
   animation: ios-side-pill 1.15s cubic-bezier(0.45, 0, 0.25, 1) infinite;
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.45);
