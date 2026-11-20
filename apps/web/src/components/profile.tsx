@@ -39,9 +39,7 @@ export function Profile() {
       <header className="flex h-[60px] items-center">
         <button
           type="button"
-          onClick={() =>
-            window.history.length > 1 ? router.back() : router.push(merchant ? "/merchant" : "/")
-          }
+          onClick={() => router.push(merchant ? "/merchant" : "/")}
           aria-label="Back"
           className="-ml-2 grid h-10 w-10 place-items-center rounded-full text-ink-soft hover:bg-surface-2 hover:text-ink"
         >

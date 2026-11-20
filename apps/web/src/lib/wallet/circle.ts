@@ -43,6 +43,33 @@ export async function createCircleDriver(appId: string): Promise<WalletDriver> {
   };
 
   const sdk = new W3SSdk({ appSettings: { appId } }, onLogin);
+  // Circle's approval screens in the app's colors and words. The signed data itself is Circle's to
+  // show (it is the user's proof of what they approve), so only the frame and labels change.
+  sdk.setThemeColor({
+    backdrop: "#000000",
+    backdropOpacity: 0.7,
+    bg: "#15101d",
+    divider: "#2d2439",
+    textMain: "#f5f0fa",
+    textAuxiliary: "#a99db9",
+    textSummary: "#f5f0fa",
+    textSummaryHighlight: "#ff4fb0",
+    textPlaceholder: "#6f6481",
+    textDetailToggle: "#a98bff",
+    textInteractive: "#0b0710",
+    interactiveBg: "#f5f0fa",
+    success: "#ff4fb0",
+    error: "#ff4d4f",
+  });
+  sdk.setLocalizations({
+    signatureRequest: {
+      title: "Approve payment",
+      subtitle: "One approval pays for your order. Wincentive covers the network fee.",
+      descriptionLabel: "Payment details",
+    },
+    contractInteraction: { title: "Approve" },
+    emailOtp: { title: "Check your email", subtitle: "Enter the 6-digit code we sent you." },
+  });
 
   return {
     kind: "circle",

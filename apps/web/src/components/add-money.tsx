@@ -165,13 +165,29 @@ export function AddMoneySheet({
               typeof navigator !== "undefined" && navigator.clipboard ? (
                 <button
                   type="button"
-                  className="font-semibold text-white"
+                  className="flex h-[50px] w-full items-center justify-center gap-2 rounded-[12px] bg-[#2c2c2e] text-[15px] font-semibold text-white active:bg-[#3a3a3c]"
                   onClick={() =>
                     void navigator.clipboard
                       .writeText(w.wallet!.address)
                       .then(() => setCopied(true))
                   }
                 >
+                  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden fill="none">
+                    <rect
+                      x="8"
+                      y="8"
+                      width="12"
+                      height="12"
+                      rx="3"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
+                    <path
+                      d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
+                  </svg>
                   {copied ? "Address copied" : "Copy wallet address"}
                 </button>
               ) : (
@@ -231,8 +247,25 @@ function PaySheet({
   error: React.ReactNode;
 }) {
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const [pressing, setPressing] = useState(false);
   const lastTap = useRef(0);
+  const payRef = useRef(onPay);
+  payRef.current = onPay;
   useEffect(() => setHost(document.body), []);
+  // The side button is "double-clicked" for you: the prompt shows for a beat, the pill presses in
+  // twice, then Face ID scans and closes into a check. A real double-click/tap still works too.
+  useEffect(() => {
+    if (stage !== "pay") {
+      setPressing(false);
+      return;
+    }
+    const press = setTimeout(() => setPressing(true), 650);
+    const go = setTimeout(() => payRef.current(), 650 + 520);
+    return () => {
+      clearTimeout(press);
+      clearTimeout(go);
+    };
+  }, [stage]);
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -277,7 +310,7 @@ function PaySheet({
           </div>
           <span
             aria-hidden
-            className="ios-side-pill pointer-events-none fixed right-0 top-[calc(19%-14px)] h-[72px] w-[5px] rounded-l-full bg-white"
+            className={`${pressing ? "ios-side-press" : "ios-side-pill"} pointer-events-none fixed right-0 top-[calc(19%-14px)] h-[72px] w-[5px] rounded-l-full bg-white`}
           />
         </>
       ) : null}
