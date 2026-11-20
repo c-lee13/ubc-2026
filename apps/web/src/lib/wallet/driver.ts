@@ -8,8 +8,15 @@ export interface WalletDriver {
   kind: "circle" | "fixture";
   /** Stable per browser (Circle: sdk.getDeviceId()). */
   getDeviceId(): Promise<string>;
-  /** Shows the email-code screen; resolves with the session once the code is accepted. */
-  verifyEmail(login: EmailLoginDto, email: string): Promise<CircleSession>;
+  /**
+   * Shows the email-code screen; resolves with the session once the code is accepted, rejects if
+   * the screen is closed first. `resend` starts a fresh login (new code) for the screen's Resend.
+   */
+  verifyEmail(
+    login: EmailLoginDto,
+    email: string,
+    resend?: () => Promise<EmailLoginDto>,
+  ): Promise<CircleSession>;
   setAuthentication(session: CircleSession): void;
   /**
    * Shows the approval screen for a challenge; resolves once approved, rejects otherwise. A

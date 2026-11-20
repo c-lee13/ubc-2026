@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { OTP_HINT } from "@/lib/wallet/otp-hint";
 import { useWallet } from "@/lib/wallet/session";
 import { Button, INPUT, Note, Spinner } from "./kit";
 
@@ -61,7 +62,12 @@ export function LoginCard({
         >
           <Spinner /> {phaseDetail(w.phase)}
         </p>
-      ) : hint ? (
+      ) : null}
+      {w.phase === "awaiting-code" ? (
+        <p className="text-center text-[12.5px] font-medium text-ink" data-testid="otp-hint">
+          {OTP_HINT}
+        </p>
+      ) : !busy && hint ? (
         <p className="text-center text-[12px] text-ink-3">{hint}</p>
       ) : null}
       {w.problem ? (
